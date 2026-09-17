@@ -510,7 +510,8 @@
     el('viewer').style.display = 'block';
     el('vName').textContent = data.name || '路书';
     el('vMeta').textContent = '共 ' + data.stops.length + ' 个途经点' +
-      (data.stops.length >= 2 ? ' · 直线全程约 ' + fmtKm(pathMeters(data.stops)) : '') +
+      (data.routeDist ? ' · 驾车全程约 ' + fmtKm(data.routeDist)
+        : data.stops.length >= 2 ? ' · 直线全程约 ' + fmtKm(pathMeters(data.stops)) : '') +
       ' · 逐段点击导航';
     document.title = (data.name || '路书') + ' · 高德导航';
 
@@ -740,7 +741,7 @@
       row.innerHTML =
         '<span class="idx">' + (i + 1) + '</span>' +
         '<div class="mid"><input class="name" value="' + escapeHtml(s.name) + '">' +
-        (i > 0 ? '<div class="dist">距上一点 ' + fmtKm(distMeters(stops[i - 1], s)) + '（直线）</div>' : '') +
+        (i > 0 ? '<div class="dist"></div>' : '') +
         '</div>' +
         '<button data-a="up" title="上移">↑</button>' +
         '<button data-a="down" title="下移">↓</button>' +
@@ -757,29 +758,17 @@
       list.appendChild(row);
     });
 
-    // 总里程（直线）
-    var di = el('distInfo');
-    if (stops.length >= 2) {
-      di.style.display = 'block';
-      di.textContent = '共 ' + stops.length + ' 个地点 · 直线全程约 ' + fmtKm(pathMeters(stops));
-    } else {
-      di.style.display = 'none';
-    }
+    // 总里程 + 分段里程
+    updateDistLabels();
 
     // 地图标记
     if (!map) return;
     markers.forEach(function (m) { m.setMap(null); });
     markers = stops.map(function (s, i) {
-      var m = new AMap.Marker({
-        position: [s.lng, s.lat], map: map, draggable: true,
+      return new AMap.Marker({
+        position: [s.lng, s.lat], map: map,
         label: { content: String(i + 1), direction: 'top' }
       });
-      m.on('dragend', function () {
-        var p = m.getPosition();
-        s.lng = +p.lng.toFixed(6); s.lat = +p.lat.toFixed(6);
-        refreshRoute();
-      });
-      return m;
     });
   }
 
@@ -814,6 +803,7 @@
   // 单段规划：两点式调用（官方标准形式），失败自动重试 1 次，并把原因打到控制台
   function searchSeg(q, done) {
     var tried = 0;
+    var straight = distMeters({ lng: q.a[0], lat: q.a[1] }, { lng: q.b[0], lat: q.b[1] });
     (function attempt() {
       try {
         driving.search(
@@ -823,18 +813,18 @@
             if (status === 'complete' && result.routes && result.routes.length) {
               var path = [];
               result.routes[0].steps.forEach(function (step) { path = path.concat(step.path); });
-              done(path, false);
+              done(path, false, result.routes[0].distance || 0); // distance = 高德返回的驾车里程（米）
             } else {
               console.warn('[路书] 路段规划失败', q.key, 'status=' + status,
                 result && result.info ? 'info=' + result.info : '', result);
               if (++tried < 2) { setTimeout(attempt, 400); return; }
-              done([q.a, q.b], true); // 直线虚线兜底
+              done([q.a, q.b], true, straight); // 直线虚线兜底
             }
           }
         );
       } catch (e) {
         console.warn('[路书] 路段规划异常', q.key, e);
-        done([q.a, q.b], true);
+        done([q.a, q.b], true, straight);
       }
     })();
   }
@@ -849,14 +839,56 @@
     }
   }
 
+  // 第 i 段（stops[i] → stops[i+1]）的里程：优先用已缓存的驾车里程，未规划/失败段直线兜底
+  function segDistInfo(i) {
+    if (!el('noRoute').checked) {
+      var c = segCache[segKey(stops[i], stops[i + 1])];
+      if (c && !c.dashed && c.dist) return { m: c.dist, driving: true };
+    }
+    return { m: distMeters(stops[i], stops[i + 1]), driving: false };
+  }
+
+  // 只更新里程文字，不重建列表（避免打断正在改名的输入框）
+  function updateDistLabels() {
+    var rows = el('stopList').querySelectorAll('.stop');
+    var total = 0, anyStraight = false;
+    for (var i = 0; i < stops.length - 1; i++) {
+      var d = segDistInfo(i);
+      total += d.m;
+      if (!d.driving) anyStraight = true;
+      var label = rows[i + 1] && rows[i + 1].querySelector('.dist');
+      if (label) label.textContent = '距上一点 ' + fmtKm(d.m) + (d.driving ? '' : '（直线）');
+    }
+    var di = el('distInfo');
+    if (stops.length < 2) { di.style.display = 'none'; return; }
+    var noRoute = el('noRoute').checked;
+    di.style.display = 'block';
+    di.textContent = '共 ' + stops.length + ' 个地点 · ' +
+      (noRoute ? '直线全程约 ' : anyStraight ? '全程约 ' : '驾车全程约 ') +
+      fmtKm(total) + (!noRoute && anyStraight ? '（含直线段）' : '');
+  }
+
+  // 当前编辑内容若各段驾车路线都已规划完成，返回驾车总里程（米），否则 null
+  function currentRouteDist() {
+    if (stops.length < 2 || el('noRoute').checked) return null;
+    var sum = 0;
+    for (var i = 0; i < stops.length - 1; i++) {
+      var c = segCache[segKey(stops[i], stops[i + 1])];
+      if (!c || c.dashed || !c.dist) return null;
+      sum += c.dist;
+    }
+    return Math.round(sum);
+  }
+
   function doRefreshRoute() {
     routeReqId++;
     var id = routeReqId;
     clearSegLines();
     el('routeMsg').style.display = 'none';
+    updateDistLabels(); // 未规划的段先显示直线兜底，规划返回后再更新成驾车里程
     if (el('noRoute').checked || stops.length < 2) return;
 
-    // 缓存兜底：拖动标记会产生大量新 key，防止缓存无限膨胀
+    // 缓存兜底：反复调整地点会产生大量新 key，防止缓存无限膨胀
     if (Object.keys(segCache).length > 300) segCache = {};
 
     // 先画已缓存的段，未缓存的进队列
@@ -880,13 +912,14 @@
         if (id !== routeReqId) return; // 已有新一轮刷新，丢弃
         var q = queue.shift();
         if (!q) return;
-        searchSeg(q, function (path, dashed) {
-          segCache[q.key] = { path: path, dashed: dashed };
+        searchSeg(q, function (path, dashed, dist) {
+          segCache[q.key] = { path: path, dashed: dashed, dist: dist };
           pending--;
           if (dashed) failed++;
           if (id === routeReqId) {
             drawSeg(path, dashed);
             updateRouteMsg(pending, failed);
+            updateDistLabels();
           }
           next();
         });
@@ -1020,7 +1053,7 @@
         '然后用 http://电脑IP:8080/index.html 打开本页面再生成链接。');
       return;
     }
-    var data = { name: el('bookName').value.trim() || '我的路书', stops: stops };
+    var data = { name: el('bookName').value.trim() || '我的路书', stops: stops, routeDist: currentRouteDist() };
     var url = location.origin + location.pathname + '#' + encodeData(data);
     el('shareBox').style.display = 'block';
     el('shareUrl').value = url;
@@ -1129,7 +1162,8 @@
       books.className = 'folder-books';
       f.books.slice().reverse().forEach(function (b) { // 新的在前
         var meta = b.stops.length + ' 个地点';
-        if (b.stops.length >= 2) meta += ' · 约 ' + fmtKm(pathMeters(b.stops)) + '（直线）';
+        if (b.routeDist) meta += ' · 驾车约 ' + fmtKm(b.routeDist);
+        else if (b.stops.length >= 2) meta += ' · 直线约 ' + fmtKm(pathMeters(b.stops));
         meta += ' · ' + fmtTime(b.updatedAt);
         var bTrackOn = trackState && trackState.type === 'book' && trackState.bookId === b.id;
         var row = document.createElement('div');
@@ -1239,16 +1273,18 @@
     }
     var name = el('saveBookName').value.trim() || '我的路书';
     var snapshot = stops.map(function (s) { return { name: s.name, lng: s.lng, lat: s.lat }; });
+    var routeDist = currentRouteDist(); // 各段都规划完成时是驾车总里程，否则 null
     var existing = folder.books.filter(function (b) { return b.name === name; })[0];
     if (existing) {
       var isCurrent = currentBookRef &&
         currentBookRef.folderId === folder.id && currentBookRef.bookId === existing.id;
       if (!isCurrent && !confirm('文件夹里已有同名路书「' + name + '」，覆盖它？')) return;
       existing.stops = snapshot;
+      existing.routeDist = routeDist;
       existing.updatedAt = Date.now();
       currentBookRef = { folderId: folder.id, bookId: existing.id };
     } else {
-      var book = { id: uid('b'), name: name, stops: snapshot, updatedAt: Date.now() };
+      var book = { id: uid('b'), name: name, stops: snapshot, updatedAt: Date.now(), routeDist: routeDist };
       folder.books.push(book);
       currentBookRef = { folderId: folder.id, bookId: book.id };
     }
@@ -1362,7 +1398,7 @@
           usedPaths[p] = true;
           entries.push({
             path: p, mode: '100644', type: 'blob',
-            content: JSON.stringify({ name: b.name, updatedAt: b.updatedAt, stops: b.stops }, null, 2)
+            content: JSON.stringify({ name: b.name, updatedAt: b.updatedAt, routeDist: b.routeDist || null, stops: b.stops }, null, 2)
           });
         });
       });
@@ -1429,7 +1465,8 @@
             id: uid('b'),
             name: d && typeof d.name === 'string' ? d.name : fname,
             stops: stops,
-            updatedAt: d && d.updatedAt || Date.now()
+            updatedAt: d && d.updatedAt || Date.now(),
+            routeDist: d && typeof d.routeDist === 'number' ? d.routeDist : null
           });
         });
       }));
