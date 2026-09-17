@@ -201,22 +201,89 @@
     text-decoration: none;
   }
 
-  /* ---- Key 设置弹层 ---- */
-  #keyModal {
+  /* ---- 弹层通用（Key 设置 / 路书库 / 保存 / GitHub） ---- */
+  .modal {
     position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.45);
     display: none; align-items: center; justify-content: center; padding: 20px;
   }
-  #keyModal .card {
+  .modal .card {
     background: #fff; border-radius: 12px; padding: 20px; width: 420px; max-width: 100%;
+    max-height: 85vh; overflow-y: auto;
   }
-  #keyModal h3 { font-size: 15px; margin-bottom: 10px; }
-  #keyModal p { font-size: 12px; color: #667085; line-height: 1.7; margin-bottom: 10px; }
-  #keyModal input {
+  .modal h3 { font-size: 15px; margin-bottom: 10px; }
+  .modal p { font-size: 12px; color: #667085; line-height: 1.7; margin-bottom: 10px; }
+  .modal label { display: block; font-size: 12px; color: #344054; margin-bottom: 4px; }
+  .modal input, .modal select {
     width: 100%; height: 36px; padding: 0 10px; font-size: 13px; margin-bottom: 8px;
-    border: 1px solid #d0d5dd; border-radius: 8px; outline: none;
+    border: 1px solid #d0d5dd; border-radius: 8px; outline: none; background: #fff;
   }
-  #keyModal a { color: #1e6fff; }
-  #keyModal .btn { width: 100%; }
+  .modal a { color: #1e6fff; }
+  .modal .btn { width: 100%; }
+  .m-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .m-head h3 { margin-bottom: 0; }
+  .m-close {
+    border: none; background: none; font-size: 15px; color: #98a2b3;
+    cursor: pointer; padding: 2px 6px;
+  }
+  .m-close:hover { color: #344054; }
+
+  /* ---- 面板头部「路书库」按钮 ---- */
+  #libBtn {
+    margin-left: auto; height: 26px; padding: 0 10px; font-size: 12px; cursor: pointer;
+    border: 1px solid #d0d5dd; border-radius: 6px; background: #fff; color: #344054;
+  }
+  #libBtn:hover { color: #1e6fff; border-color: #1e6fff; }
+
+  /* ---- 路书库弹层 ---- */
+  #libModal .card { width: 480px; }
+  .lib-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .lib-toolbar button {
+    flex: 1; height: 34px; border: 1px solid #d0d5dd; border-radius: 8px;
+    background: #fff; font-size: 13px; color: #344054; cursor: pointer;
+  }
+  .lib-toolbar button:hover { color: #1e6fff; border-color: #1e6fff; }
+  #libList:empty::after {
+    content: '还没有文件夹，点上方「+ 新建文件夹」';
+    font-size: 12px; color: #c0c6d0;
+  }
+  .folder { border: 1px solid #eceef1; border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  .folder-head {
+    display: flex; align-items: center; gap: 8px; padding: 9px 10px;
+    background: #fafbfc; cursor: pointer; user-select: none;
+  }
+  .folder-head .arrow { width: 12px; flex: none; font-size: 12px; color: #98a2b3; }
+  .folder-head .f-name {
+    flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: #101828;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .folder-head .f-count { flex: none; font-size: 12px; color: #98a2b3; }
+  .folder-head button, .book button {
+    flex: none; border: none; background: none; cursor: pointer;
+    font-size: 12px; color: #98a2b3; padding: 2px 4px;
+  }
+  .folder-head button:hover, .book button:hover { color: #1e6fff; }
+  .folder-head button.del:hover, .book button.del:hover { color: #e04f5e; }
+  .folder-books { display: none; padding: 2px 8px 6px; }
+  .folder.open .folder-books { display: block; }
+  .book {
+    display: flex; align-items: center; gap: 6px; padding: 7px 4px;
+    border-bottom: 1px solid #f2f4f7;
+  }
+  .book:last-child { border-bottom: none; }
+  .book .b-info { flex: 1; min-width: 0; cursor: pointer; }
+  .book .b-name {
+    font-size: 13px; color: #101828;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .book .b-meta { font-size: 11px; color: #98a2b3; }
+  .book .open-btn { color: #1e6fff; }
+
+  /* ---- GitHub 上传状态 ---- */
+  #ghStatus { font-size: 12px; margin-top: 8px; line-height: 1.6; color: #667085; word-break: break-all; }
+  #ghStatus.ok { color: #12b76a; }
+  #ghStatus.err { color: #e04f5e; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row .btn { width: auto; flex: 1; }
 
   @media (max-width: 720px) {
     #panel { width: 100%; }
@@ -233,6 +300,7 @@
     <div class="p-head">
       <button class="back" id="collapseBtn" title="收起/展开">‹</button>
       <span class="title">编辑路线信息</span>
+      <button id="libBtn" title="打开我的路书库">路书库</button>
     </div>
     <div id="panelBody">
       <div class="p-row">
@@ -249,7 +317,8 @@
       <label class="noroute"><input type="checkbox" id="noRoute"> 地点之间不规划路线</label>
       <div id="actions">
         <button class="btn secondary" id="clearBtn">取消</button>
-        <button class="btn" id="genBtn">保存</button>
+        <button class="btn secondary" id="saveLibBtn">存到路书库</button>
+        <button class="btn" id="genBtn">分享</button>
       </div>
       <div id="shareBox">
         <textarea id="shareUrl" readonly></textarea>
@@ -288,7 +357,7 @@
 </div>
 
 <!-- Key 设置 -->
-<div id="keyModal">
+<div id="keyModal" class="modal">
   <div class="card">
     <h3>配置高德 API Key（只需一次）</h3>
     <p>到 <a href="https://lbs.amap.com" target="_blank">lbs.amap.com</a> 免费注册开发者 →
@@ -297,6 +366,62 @@
     <input id="keyInput" placeholder="JS API Key">
     <input id="secretInput" placeholder="安全密钥 securityJsCode">
     <button class="btn" id="saveKeyBtn">保存并加载地图</button>
+  </div>
+</div>
+
+<!-- 路书库 -->
+<div id="libModal" class="modal">
+  <div class="card">
+    <div class="m-head">
+      <h3>我的路书库</h3>
+      <button class="m-close" data-close="libModal">✕</button>
+    </div>
+    <div class="lib-toolbar">
+      <button id="newFolderBtn">+ 新建文件夹</button>
+      <button id="ghOpenBtn">GitHub 同步</button>
+    </div>
+    <div id="libList"></div>
+  </div>
+</div>
+
+<!-- 保存到路书库 -->
+<div id="saveModal" class="modal">
+  <div class="card">
+    <div class="m-head">
+      <h3>保存到路书库</h3>
+      <button class="m-close" data-close="saveModal">✕</button>
+    </div>
+    <label>保存到文件夹</label>
+    <select id="saveFolderSel"></select>
+    <input id="saveNewFolder" placeholder="新文件夹名称" maxlength="40" style="display:none">
+    <label>路书名称</label>
+    <input id="saveBookName" maxlength="40">
+    <button class="btn" id="saveConfirmBtn">保存</button>
+  </div>
+</div>
+
+<!-- GitHub 同步 -->
+<div id="ghModal" class="modal">
+  <div class="card">
+    <div class="m-head">
+      <h3>GitHub 同步（备份 / 多台电脑）</h3>
+      <button class="m-close" data-close="ghModal">✕</button>
+    </div>
+    <p>整个路书库（所有文件夹和路书）存为仓库里的一个 JSON 文件：<b>上传</b>=用本地覆盖仓库（备份），
+       <b>拉取</b>=用仓库覆盖本地（同步到这台电脑）。<br>
+       到 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a>
+       生成 Token（classic 勾 <code>repo</code> 权限；或 fine-grained 只给目标仓库 Contents 读写权限）。
+       Token 只存在这台电脑的浏览器 localStorage 里，每台电脑要各填一次。<br>
+       注意：提交到<b>公开仓库</b>（如本站的 gh-pages）后路书数据任何人可见，介意的话填一个你自己的私有仓库。</p>
+    <input id="ghToken" type="password" placeholder="GitHub Token">
+    <input id="ghRepo" placeholder="仓库 owner/repo，如 SimplePlanning/roadbook">
+    <input id="ghBranch" placeholder="分支（默认 gh-pages）">
+    <input id="ghPath" placeholder="文件路径（默认 roadbooks.json）">
+    <div class="btn-row">
+      <button class="btn" id="ghUploadBtn">上传（备份到仓库）</button>
+      <button class="btn secondary" id="ghPullBtn">拉取（覆盖本地）</button>
+    </div>
+    <div id="ghStatus"></div>
   </div>
 </div>
 
@@ -714,6 +839,363 @@
         setTimeout(function () { el('copyBtn').textContent = '复制链接（发到微信即可）'; }, 1500);
       });
     } else { document.execCommand('copy'); }
+  };
+
+  // ---------- 本地路书库（文件夹 → 路书，存 localStorage） ----------
+  var LIB_KEY = 'roadbook_lib_v1';
+  var currentBookRef = null; // {folderId, bookId}：当前编辑内容对应库里的哪份路书
+
+  function loadLib() {
+    try {
+      var d = JSON.parse(localStorage.getItem(LIB_KEY));
+      if (d && Array.isArray(d.folders)) return d;
+    } catch (e) {}
+    return { folders: [] };
+  }
+  function saveLibData(lib) {
+    localStorage.setItem(LIB_KEY, JSON.stringify(lib));
+  }
+  function uid(prefix) {
+    return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+  function findBook(lib, folderId, bookId) {
+    for (var i = 0; i < lib.folders.length; i++) {
+      var f = lib.folders[i];
+      if (f.id !== folderId) continue;
+      for (var j = 0; j < f.books.length; j++) {
+        if (f.books[j].id === bookId) return { folder: f, book: f.books[j] };
+      }
+    }
+    return null;
+  }
+  function fmtTime(ts) {
+    var d = new Date(ts);
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function openModal(id) { el(id).style.display = 'flex'; }
+  function closeModal(id) { el(id).style.display = 'none'; }
+  ['libModal', 'saveModal', 'ghModal'].forEach(function (id) {
+    el(id).onclick = function (e) { if (e.target === this) closeModal(id); };
+  });
+  var closeBtns = document.querySelectorAll('.m-close');
+  for (var ci = 0; ci < closeBtns.length; ci++) {
+    closeBtns[ci].onclick = function () { closeModal(this.getAttribute('data-close')); };
+  }
+
+  // 库列表：文件夹可折叠，路书点名称或「打开」载入编辑器
+  function renderLib() {
+    var lib = loadLib();
+    var list = el('libList');
+    list.innerHTML = '';
+    lib.folders.forEach(function (f) {
+      var fdiv = document.createElement('div');
+      fdiv.className = 'folder open';
+
+      var head = document.createElement('div');
+      head.className = 'folder-head';
+      head.innerHTML =
+        '<span class="arrow">▾</span>' +
+        '<span class="f-name">' + escapeHtml(f.name) + '</span>' +
+        '<span class="f-count">' + f.books.length + ' 份</span>' +
+        '<button data-a="rename" title="文件夹改名">✎</button>' +
+        '<button class="del" data-a="del" title="删除文件夹">✕</button>';
+      head.onclick = function (e) {
+        var a = e.target.getAttribute && e.target.getAttribute('data-a');
+        if (a === 'rename') {
+          var n = prompt('文件夹名称', f.name);
+          if (n && n.trim()) { f.name = n.trim().slice(0, 40); saveLibData(lib); renderLib(); }
+          return;
+        }
+        if (a === 'del') {
+          if (confirm('删除文件夹「' + f.name + '」及里面 ' + f.books.length + ' 份路书？')) {
+            lib.folders = lib.folders.filter(function (x) { return x.id !== f.id; });
+            if (currentBookRef && currentBookRef.folderId === f.id) currentBookRef = null;
+            saveLibData(lib); renderLib();
+          }
+          return;
+        }
+        fdiv.classList.toggle('open');
+        head.querySelector('.arrow').textContent = fdiv.classList.contains('open') ? '▾' : '▸';
+      };
+      fdiv.appendChild(head);
+
+      var books = document.createElement('div');
+      books.className = 'folder-books';
+      f.books.slice().reverse().forEach(function (b) { // 新的在前
+        var row = document.createElement('div');
+        row.className = 'book';
+        row.innerHTML =
+          '<div class="b-info"><div class="b-name">' + escapeHtml(b.name) + '</div>' +
+          '<div class="b-meta">' + b.stops.length + ' 个地点 · ' + fmtTime(b.updatedAt) + '</div></div>' +
+          '<button class="open-btn" data-a="open">打开</button>' +
+          '<button data-a="rename">改名</button>' +
+          '<button class="del" data-a="del">删除</button>';
+        row.onclick = function (e) {
+          var a = e.target.getAttribute && e.target.getAttribute('data-a');
+          if (a === 'rename') {
+            var n = prompt('路书名称', b.name);
+            if (n && n.trim()) { b.name = n.trim().slice(0, 40); b.updatedAt = Date.now(); saveLibData(lib); renderLib(); }
+            return;
+          }
+          if (a === 'del') {
+            if (confirm('删除路书「' + b.name + '」？')) {
+              f.books = f.books.filter(function (x) { return x.id !== b.id; });
+              if (currentBookRef && currentBookRef.bookId === b.id) currentBookRef = null;
+              saveLibData(lib); renderLib();
+            }
+            return;
+          }
+          openBook(f.id, b.id);
+        };
+        books.appendChild(row);
+      });
+      fdiv.appendChild(books);
+      list.appendChild(fdiv);
+    });
+  }
+
+  function openBook(folderId, bookId) {
+    var lib = loadLib();
+    var hit = findBook(lib, folderId, bookId);
+    if (!hit) { alert('这份路书已不存在'); renderLib(); return; }
+    stops = hit.book.stops.map(function (s) { return { name: s.name, lng: s.lng, lat: s.lat }; });
+    el('bookName').value = hit.book.name;
+    currentBookRef = { folderId: folderId, bookId: bookId };
+    el('shareBox').style.display = 'none';
+    closeModal('libModal');
+    renderStops();
+    if (window.__map) { refreshRoute(); fitMap(); }
+  }
+
+  el('libBtn').onclick = function () { renderLib(); openModal('libModal'); };
+
+  el('newFolderBtn').onclick = function () {
+    var n = prompt('文件夹名称（如：新疆自驾）');
+    if (!n || !n.trim()) return;
+    var lib = loadLib();
+    lib.folders.push({ id: uid('f'), name: n.trim().slice(0, 40), books: [] });
+    saveLibData(lib);
+    renderLib();
+  };
+
+  // ---------- 存到路书库 ----------
+  el('saveLibBtn').onclick = function () {
+    if (!stops.length) { alert('先添加至少一个地点'); return; }
+    var lib = loadLib();
+    var sel = el('saveFolderSel');
+    sel.innerHTML = '';
+    lib.folders.forEach(function (f) {
+      var o = document.createElement('option');
+      o.value = f.id;
+      o.textContent = f.name;
+      sel.appendChild(o);
+    });
+    var oNew = document.createElement('option');
+    oNew.value = '__new__';
+    oNew.textContent = '+ 新建文件夹…';
+    sel.appendChild(oNew);
+    // 从库里打开的路书，默认存回原文件夹；没有文件夹时只能新建
+    if (currentBookRef && findBook(lib, currentBookRef.folderId, currentBookRef.bookId)) {
+      sel.value = currentBookRef.folderId;
+    } else if (!lib.folders.length) {
+      sel.value = '__new__';
+    }
+    el('saveNewFolder').style.display = sel.value === '__new__' ? '' : 'none';
+    el('saveBookName').value = el('bookName').value.trim() || '我的路书';
+    openModal('saveModal');
+  };
+
+  el('saveFolderSel').onchange = function () {
+    el('saveNewFolder').style.display = this.value === '__new__' ? '' : 'none';
+    if (this.value === '__new__') el('saveNewFolder').focus();
+  };
+
+  el('saveConfirmBtn').onclick = function () {
+    var lib = loadLib();
+    var folder;
+    if (el('saveFolderSel').value === '__new__') {
+      var fn = el('saveNewFolder').value.trim();
+      if (!fn) { alert('请填写新文件夹名称'); return; }
+      folder = { id: uid('f'), name: fn.slice(0, 40), books: [] };
+      lib.folders.push(folder);
+    } else {
+      var fid = el('saveFolderSel').value;
+      folder = lib.folders.filter(function (f) { return f.id === fid; })[0];
+      if (!folder) { alert('文件夹已不存在，请重试'); closeModal('saveModal'); return; }
+    }
+    var name = el('saveBookName').value.trim() || '我的路书';
+    var snapshot = stops.map(function (s) { return { name: s.name, lng: s.lng, lat: s.lat }; });
+    var existing = folder.books.filter(function (b) { return b.name === name; })[0];
+    if (existing) {
+      var isCurrent = currentBookRef &&
+        currentBookRef.folderId === folder.id && currentBookRef.bookId === existing.id;
+      if (!isCurrent && !confirm('文件夹里已有同名路书「' + name + '」，覆盖它？')) return;
+      existing.stops = snapshot;
+      existing.updatedAt = Date.now();
+      currentBookRef = { folderId: folder.id, bookId: existing.id };
+    } else {
+      var book = { id: uid('b'), name: name, stops: snapshot, updatedAt: Date.now() };
+      folder.books.push(book);
+      currentBookRef = { folderId: folder.id, bookId: book.id };
+    }
+    saveLibData(lib);
+    el('bookName').value = name;
+    closeModal('saveModal');
+    alert('已保存到路书库「' + folder.name + '」');
+  };
+
+  // ---------- GitHub 同步（Contents API：上传=本地覆盖仓库，拉取=仓库覆盖本地） ----------
+  el('ghOpenBtn').onclick = function () {
+    el('ghToken').value = localStorage.getItem('gh_token') || '';
+    el('ghRepo').value = localStorage.getItem('gh_repo') || '';
+    el('ghBranch').value = localStorage.getItem('gh_branch') || 'gh-pages';
+    el('ghPath').value = localStorage.getItem('gh_path') || 'roadbooks.json';
+    ghStatus('', '');
+    openModal('ghModal');
+  };
+
+  function ghStatus(text, cls) {
+    var s = el('ghStatus');
+    s.textContent = text;
+    s.className = cls || '';
+  }
+
+  // 读表单 + 校验 + 持久化，上传/拉取共用
+  function ghReadConfig() {
+    var cfg = {
+      token: el('ghToken').value.trim(),
+      // 容错：允许粘贴完整仓库 URL 或带 .git 后缀
+      repo: el('ghRepo').value.trim()
+        .replace(/^https?:\/\/github\.com\//i, '')
+        .replace(/\.git$/, '')
+        .replace(/\/+$/, ''),
+      branch: el('ghBranch').value.trim() || 'gh-pages',
+      path: el('ghPath').value.trim() || 'roadbooks.json'
+    };
+    el('ghRepo').value = cfg.repo;
+    if (!cfg.token) { ghStatus('请填写 GitHub Token', 'err'); return null; }
+    if (!/^[\w.-]+\/[\w.-]+$/.test(cfg.repo)) { ghStatus('仓库格式应为 owner/repo', 'err'); return null; }
+    localStorage.setItem('gh_token', cfg.token);
+    localStorage.setItem('gh_repo', cfg.repo);
+    localStorage.setItem('gh_branch', cfg.branch);
+    localStorage.setItem('gh_path', cfg.path);
+    return cfg;
+  }
+
+  // 校验/清洗拉下来的数据，防止坏文件搞坏本地库
+  function validateLib(d) {
+    if (!d || !Array.isArray(d.folders)) return null;
+    var folders = [];
+    d.folders.forEach(function (f) {
+      if (!f || typeof f.name !== 'string' || !Array.isArray(f.books)) return;
+      var books = [];
+      f.books.forEach(function (b) {
+        if (!b || typeof b.name !== 'string' || !Array.isArray(b.stops)) return;
+        var stops = [];
+        b.stops.forEach(function (s) {
+          if (s && typeof s.lng === 'number' && typeof s.lat === 'number') {
+            stops.push({ name: String(s.name || '途经点'), lng: s.lng, lat: s.lat });
+          }
+        });
+        books.push({ id: b.id || uid('b'), name: b.name, stops: stops, updatedAt: b.updatedAt || Date.now() });
+      });
+      folders.push({ id: f.id || uid('f'), name: f.name, books: books });
+    });
+    return { folders: folders };
+  }
+
+  function countBooks(lib) {
+    var n = 0;
+    lib.folders.forEach(function (f) { n += f.books.length; });
+    return n;
+  }
+
+  el('ghUploadBtn').onclick = async function () {
+    var cfg = ghReadConfig();
+    if (!cfg) return;
+    var lib = loadLib();
+    if (!lib.folders.length) { ghStatus('路书库是空的，先保存至少一份路书', 'err'); return; }
+
+    ghStatus('上传中…', '');
+    var headers = {
+      'Authorization': 'Bearer ' + cfg.token,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    };
+    var api = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + cfg.path;
+    try {
+      // 文件已存在时必须先拿到 sha 才能覆盖更新；404 说明是新建
+      var sha;
+      var cur = await fetch(api + '?ref=' + encodeURIComponent(cfg.branch), { headers: headers });
+      if (cur.ok) {
+        sha = (await cur.json()).sha;
+      } else if (cur.status !== 404) {
+        throw new Error('查询文件失败：HTTP ' + cur.status + ' ' + (await cur.text()).slice(0, 200));
+      }
+      var body = {
+        message: '更新路书库（' + lib.folders.length + ' 个文件夹）',
+        content: encodeData(lib),
+        branch: cfg.branch
+      };
+      if (sha) body.sha = sha;
+      var res = await fetch(api, { method: 'PUT', headers: headers, body: JSON.stringify(body) });
+      if (res.status === 404) {
+        throw new Error('提交失败：404——仓库名/分支名错误，或 Token 没有该仓库的写权限' +
+          '（Token 必须是仓库所属账号生成的；classic 需勾 repo；fine-grained 需选中该仓库并给 Contents 读写权限）');
+      }
+      if (!res.ok) {
+        throw new Error('提交失败：HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200));
+      }
+      ghStatus('上传成功 ✓ 已提交到 ' + cfg.repo + ' 的 ' + cfg.branch + ' 分支 ' + cfg.path, 'ok');
+    } catch (e) {
+      ghStatus(String(e && e.message || e), 'err');
+    }
+  };
+
+  el('ghPullBtn').onclick = async function () {
+    var cfg = ghReadConfig();
+    if (!cfg) return;
+
+    ghStatus('拉取中…', '');
+    var headers = {
+      'Authorization': 'Bearer ' + cfg.token,
+      'Accept': 'application/vnd.github+json'
+    };
+    var api = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + cfg.path;
+    try {
+      var res = await fetch(api + '?ref=' + encodeURIComponent(cfg.branch), { headers: headers });
+      if (res.status === 404) {
+        ghStatus('仓库里还没有 ' + cfg.path + '，先在任意一台电脑上传一次' +
+          '（若确认已上传过，则是仓库名/分支名错误或 Token 无权访问该仓库）', 'err');
+        return;
+      }
+      if (!res.ok) {
+        throw new Error('拉取失败：HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200));
+      }
+      var data = await res.json();
+      if (!data.content) throw new Error('读取文件内容失败');
+      // API 返回的 base64 带换行，先去掉空白再解码
+      var remote = validateLib(decodeData(String(data.content).replace(/\s/g, '')));
+      if (!remote) throw new Error('文件内容不是有效的路书库数据');
+      var localCount = countBooks(loadLib());
+      if (localCount > 0 &&
+          !confirm('拉取会用仓库里的路书库覆盖本地，本地 ' + localCount + ' 份未上传的路书会丢失。继续？')) {
+        ghStatus('已取消拉取', '');
+        return;
+      }
+      saveLibData(remote);
+      if (currentBookRef && !findBook(remote, currentBookRef.folderId, currentBookRef.bookId)) {
+        currentBookRef = null;
+      }
+      renderLib();
+      ghStatus('拉取成功 ✓ 已覆盖本地：' + remote.folders.length + ' 个文件夹 / ' +
+        countBooks(remote) + ' 份路书', 'ok');
+    } catch (e) {
+      ghStatus(String(e && e.message || e), 'err');
+    }
   };
 
   // ---------- 启动 ----------

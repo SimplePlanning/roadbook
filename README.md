@@ -13,10 +13,8 @@ https://simpleplanning.github.io/roadbook/
 ## 文件结构
 
 ```
-/home/wanji/roadbook/
 ├── index.html   # 全部功能（页面 + 样式 + 逻辑），单文件零依赖
-├── README.md
-└── .git/        # gh-pages 分支，推送到 GitHub 即更新线上页面
+└── README.md
 ```
 
 ## 使用方法
@@ -25,31 +23,50 @@ https://simpleplanning.github.io/roadbook/
    到 [lbs.amap.com](https://lbs.amap.com) 注册开发者 → 创建应用 → 添加「Web端(JS API)」类型 Key → 把 Key 和安全密钥填进页面弹窗
 2. **标点**：顶部搜索框搜地点，结果行点击定位、点 `+` 加入；或直接点地图，弹出的气泡里点 `+` 加入。最多 50 个点
 3. **调整**：左侧列表可改名、上移/下移、删除；地图上标记可拖动微调；相邻点之间自动画驾车路线（分段缓存，失败的段显示虚线并给出提示条，点提示条可重试）
-4. **保存分享**：点「保存」生成链接和二维码，发到微信
-5. **手机导航**：点开链接是路书列表，逐段点「导航」调起高德 App
+4. **存到路书库**：点「存到路书库」，选一个文件夹（或新建）保存——比如建个「新疆自驾」文件夹，里面放「第一天」「第二天」两份路书。点面板右上「路书库」可打开 / 改名 / 删除；数据存在浏览器 localStorage
+5. **分享**：点「分享」生成链接和二维码，发到微信
+6. **手机导航**：点开链接是路书列表，逐段点「导航」调起高德 App
+
+## GitHub 同步（备份 + 多台电脑）
+
+路书库只存在当前浏览器里（按域名隔离，换浏览器/设备看不到）。点路书库弹层里的「GitHub 同步」，可把整个路书库作为仓库里的一个 JSON 文件来备份和多电脑同步：
+
+- **上传**：用本地路书库覆盖仓库文件
+- **拉取**：用仓库文件覆盖本地路书库（本地有未上传的路书时会先弹确认）
+
+首次配置：到 [github.com/settings/tokens](https://github.com/settings/tokens) 生成 Token（classic 勾 `repo` 权限；或 fine-grained 只给目标仓库 Contents 读写权限），在弹窗里填 Token、仓库（`owner/repo`）、分支（默认 `gh-pages`）、文件路径（默认 `roadbooks.json`）。Token 和配置存在这台电脑的 localStorage，下次自动填好。
+
+### 多台电脑协作流程
+
+网址 `https://simpleplanning.github.io/roadbook/` 是公开的，任何电脑直接打开即可。每台电脑首次使用各配置一次高德 Key 和 GitHub Token（都存在各自浏览器里），之后：
+
+1. **A 电脑**：规划 → 「存到路书库」→ 路书库 →「GitHub 同步」→「上传」
+2. **B 电脑**：路书库 →「GitHub 同步」→「拉取」→ 继续编辑 → 再「上传」
+
+注意：上传/拉取都是**整库覆盖**，没有合并。所以每台电脑动手编辑前先拉取，编辑完及时上传，否则后上传的会盖掉先上传的。
+
+其他注意：
+
+- **提交到公开仓库后路书数据任何人可见**（本站是公开 Pages，文件会出现在 `https://simpleplanning.github.io/roadbook/roadbooks.json`），介意的话填一个自己的私有仓库
+- 如果打不开 github.com 网页版，换个网络（如手机热点）生成 Token 即可；上传/拉取走的 `api.github.com` 一般不受影响
 
 ## 已知限制
 
 - **微信内置浏览器无法直接拉起高德 App**（平台限制）：需按页面顶部提示「在浏览器打开」后再点导航
 - 高德导航 URI 只支持单目的地，所以路书是"逐段导航"形式；点名称建议写成 `D1 xxx` 便于区分
 - 驾车规划走的是高德 JS API 配额（个人 Key 约 5000 次/日），分段已做缓存+防抖+限并发，正常使用没问题；配额耗尽时路段会显示虚线，控制台（F12）搜"路书"可看具体错误
-- 直接双击 `index.html`（file://）打开可以规划，但点「保存」会被拦截提醒——因为 file:// 链接手机访问不到
+- 直接双击 `index.html`（file://）打开可以规划，但点「分享」会被拦截提醒——因为 file:// 链接手机访问不到
+- 路书库存在浏览器 localStorage（按域名隔离），清浏览器数据、换浏览器/设备/域名都会丢失或不可见——重要路书记得用「GitHub 同步」上传备份
 
 ## 更新部署
 
-改完 `index.html` 后推送即上线（约 1 分钟生效）：
+改完 `index.html` 后推送到 `gh-pages` 分支即上线（约 1 分钟生效）：
 
 ```bash
-cd /home/wanji/roadbook
-git add index.html && git commit -m "更新说明"
-GIT_SSH_COMMAND="ssh -i ~/.ssh/github_roadbook -o IdentitiesOnly=yes" git push
+git add index.html README.md && git commit -m "更新说明" && git push
 ```
-
-- SSH 私钥：`~/.ssh/github_roadbook`（公钥已添加到 GitHub 账号 Settings → SSH keys，Title 为 `roadbook`）
-- 注意：办公室网络屏蔽了 github.com 网页版（443），但 SSH（22）和 API 正常，推送不受影响；github.io 访问正常
 
 ## 历史说明
 
-- 2026-09-17 初版上线：曾用 `python3 -m http.server`（局域网）+ cloudflared 临时隧道（公网）过渡，迁移到 GitHub Pages 后均已关停
-- cloudflared 二进制留在 `~/.local/bin/cloudflared`，如需临时公网分享可再用：
-  `cloudflared tunnel --url http://localhost:8080`（免费、免注册，但每次重启域名会变）
+- 2026-09-17 初版上线：曾用本地 HTTP 服务（局域网）+ cloudflared 临时隧道（公网）过渡，迁移到 GitHub Pages 后均已关停
+- 2026-09-17 增加本地路书库（文件夹分组，存 localStorage）和 GitHub 同步（上传/拉取整库覆盖），支持多台电脑接力规划
