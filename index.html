@@ -587,16 +587,30 @@
     if (data.stops.length >= 2) {
       var all = document.createElement('a');
       all.className = 'navall';
-      all.href = navAllUrl(data.stops);
       all.textContent = '▶ 导航全部：' + data.stops[0].name + ' 出发' +
         (data.stops.length > 2 ? '，途经 ' + (data.stops.length - 2) + ' 个点' : '') +
         '，到 ' + data.stops[data.stops.length - 1].name;
+      var isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
       if (data.stops.length > 18) { // 途经点上限 16 个（高德 App 手动添加的上限）
+        all.href = '#';
         all.onclick = function (e) {
           e.preventDefault();
           alert('一次导航最多支持 16 个途经点（共 18 个点），这份路书有 ' +
             data.stops.length + ' 个点。请用下方逐段导航，或把路书拆成两份。');
         };
+      } else if (data.stops.length > 3 && isMobile) {
+        // 高德官方 URI 的 via 只支持 1 个途经点，网页版 dir 在手机上被强制跳 m.amap.com 丢参数，
+        // 手机上没有能带多个途经点的链接方式（平台限制），只能提示走逐段导航
+        all.href = '#';
+        all.onclick = function (e) {
+          e.preventDefault();
+          alert('高德链接导航最多只能带 1 个途经点（平台限制），这份路书有 ' +
+            (data.stops.length - 2) + ' 个途经点，无法一次导入手机高德。\n\n' +
+            '请用下方逐段导航（每个「导航」按钮都会直接打开高德 App）；' +
+            '在电脑上打开本页时，此按钮可查看完整的多点路线。');
+        };
+      } else {
+        all.href = navAllUrl(data.stops);
       }
       box.appendChild(all);
     }
