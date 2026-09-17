@@ -213,9 +213,21 @@
   .leg .info { flex: 1; min-width: 0; }
   .leg .info .t { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .leg .info .c { font-size: 12px; color: #98a2b3; }
-  .leg a.nav {
+  .leg .nav {
     flex: none; text-decoration: none; background: #1e6fff; color: #fff;
     font-size: 14px; padding: 9px 14px; border-radius: 8px;
+  }
+  .leg.pick { cursor: pointer; }
+  .leg.pick:hover { background: #f5f8ff; }
+  .navall {
+    display: block; text-align: center; text-decoration: none;
+    background: #12b76a; color: #fff; font-size: 15px; font-weight: 600;
+    line-height: 1.5; padding: 13px; border-radius: 12px; margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .backFolder {
+    display: block; font-size: 13px; color: #1e6fff;
+    text-decoration: none; margin-bottom: 10px;
   }
   #wechatTip {
     display: none; background: #fff7e6; border: 1px solid #ffd591; color: #ad6800;
@@ -464,7 +476,6 @@
 
   // ---------- 数据 ----------
   var stops = [];   // {name, lng, lat}
-  var bookData = null; // 从分享链接解析出的数据
 
   // ---------- 工具 ----------
   function encodeData(obj) {
@@ -491,11 +502,56 @@
   }
 
   // ---------- 查看模式 ----------
+  var viewFolder = null; // 文件夹分享时：整个文件夹的数据 {folder, books}
+
+  // 整条路书一次导航：第一个点为起点、最后一个点为终点、其余为途经点
+  function navAllUrl(stops) {
+    var first = stops[0], last = stops[stops.length - 1];
+    var url = 'https://uri.amap.com/navigation?from=' + first.lng + ',' + first.lat + ',' +
+      encodeURIComponent(first.name) +
+      '&to=' + last.lng + ',' + last.lat + ',' + encodeURIComponent(last.name);
+    if (stops.length > 2) {
+      url += '&via=' + stops.slice(1, -1).map(function (s) { return s.lng + ',' + s.lat; }).join('|');
+    }
+    return url + '&mode=car&callnative=1&src=roadbook';
+  }
+
   function showViewer(data) {
-    bookData = data;
     el('panel').style.display = 'none';
     el('mapWrap').style.display = 'none';
     el('viewer').style.display = 'block';
+    if (data && Array.isArray(data.books)) {
+      viewFolder = data;   // 文件夹分享：先选路书
+      showFolderView();
+    } else {
+      viewFolder = null;
+      showBookView(data);
+    }
+  }
+
+  // 文件夹分享：列出所有路书，点一份进去再导航
+  function showFolderView() {
+    el('vName').textContent = viewFolder.folder || '路书文件夹';
+    el('vMeta').textContent = '共 ' + viewFolder.books.length + ' 份路书 · 点一份进去导航';
+    document.title = (viewFolder.folder || '路书文件夹') + ' · 高德导航';
+    el('editThis').style.display = 'none';
+    var box = el('vLegs');
+    box.innerHTML = '';
+    viewFolder.books.forEach(function (b, i) {
+      var div = document.createElement('div');
+      div.className = 'leg pick';
+      div.innerHTML =
+        '<div class="idx">' + (i + 1) + '</div>' +
+        '<div class="info"><div class="t">' + escapeHtml(b.name) + '</div>' +
+        '<div class="c">' + b.stops.length + ' 个地点</div></div>' +
+        '<span class="nav">打开</span>';
+      div.onclick = function () { showBookView(b); };
+      box.appendChild(div);
+    });
+  }
+
+  // 单份路书：顶部「导航全部」+ 逐段导航
+  function showBookView(data) {
     el('vName').textContent = data.name || '路书';
     el('vMeta').textContent = '共 ' + data.stops.length + ' 个途经点' +
       (data.stops.length >= 2
@@ -506,6 +562,33 @@
 
     var box = el('vLegs');
     box.innerHTML = '';
+
+    if (viewFolder) {
+      var back = document.createElement('a');
+      back.className = 'backFolder';
+      back.href = '#';
+      back.textContent = '← 返回「' + (viewFolder.folder || '文件夹') + '」路书列表';
+      back.onclick = function (e) { e.preventDefault(); showFolderView(); };
+      box.appendChild(back);
+    }
+
+    if (data.stops.length >= 2) {
+      var all = document.createElement('a');
+      all.className = 'navall';
+      all.href = navAllUrl(data.stops);
+      all.textContent = '▶ 导航全部：' + data.stops[0].name + ' 出发' +
+        (data.stops.length > 2 ? '，途经 ' + (data.stops.length - 2) + ' 个点' : '') +
+        '，到 ' + data.stops[data.stops.length - 1].name;
+      if (data.stops.length > 18) { // 高德 URI 途经点上限 16 个
+        all.onclick = function (e) {
+          e.preventDefault();
+          alert('高德一次导航最多支持 16 个途经点（共 18 个点），这份路书有 ' +
+            data.stops.length + ' 个点。请用下方逐段导航，或把路书拆成两份。');
+        };
+      }
+      box.appendChild(all);
+    }
+
     data.stops.forEach(function (s, i) {
       var navUrl = 'https://uri.amap.com/navigation?to=' + s.lng + ',' + s.lat + ',' +
         encodeURIComponent(s.name) + '&mode=car&callnative=1&src=roadbook';
@@ -521,6 +604,7 @@
       box.appendChild(div);
     });
 
+    el('editThis').style.display = '';
     el('editThis').onclick = function (e) {
       e.preventDefault();
       stops = data.stops.map(function (s) { return { name: s.name, lng: s.lng, lat: s.lat }; });
@@ -1104,6 +1188,8 @@
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
       ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
+  // 名称排序：数字感知，1 < 2 < … < 10（名字开头带序号即可固定顺序）
+  function natCmp(a, b) { return String(a).localeCompare(String(b), 'zh', { numeric: true }); }
 
   function openModal(id) { el(id).style.display = 'flex'; }
   function closeModal(id) { el(id).style.display = 'none'; }
@@ -1120,7 +1206,7 @@
     var lib = loadLib();
     var list = el('libList');
     list.innerHTML = '';
-    lib.folders.forEach(function (f) {
+    lib.folders.slice().sort(function (x, y) { return natCmp(x.name, y.name); }).forEach(function (f) {
       var fdiv = document.createElement('div');
       fdiv.className = 'folder open';
 
@@ -1133,11 +1219,13 @@
         '<span class="f-count">' + f.books.length + ' 份</span>' +
         '<button class="track-btn' + (fTrackOn ? ' on' : '') + '" data-a="track" title="在地图上显示整个文件夹的轨迹">' +
           (fTrackOn ? '隐藏轨迹' : '轨迹') + '</button>' +
+        '<button data-a="share" title="生成文件夹分享链接，打开后选路书导航">分享</button>' +
         '<button data-a="rename" title="文件夹改名">✎</button>' +
         '<button class="del" data-a="del" title="删除文件夹">✕</button>';
       head.onclick = function (e) {
         var a = e.target.getAttribute && e.target.getAttribute('data-a');
         if (a === 'track') { toggleFolderTrack(f.id); return; }
+        if (a === 'share') { shareFolder(f); return; }
         if (a === 'rename') {
           var n = prompt('文件夹名称', f.name);
           if (n && n.trim()) { f.name = n.trim().slice(0, 40); saveLibData(lib); renderLib(); }
@@ -1159,11 +1247,8 @@
 
       var books = document.createElement('div');
       books.className = 'folder-books';
-      f.books.slice().reverse().forEach(function (b) { // 新的在前
-        var meta = b.stops.length + ' 个地点';
-        if (b.routeDist) meta += ' · 驾车约 ' + fmtKm(b.routeDist);
-        else if (b.stops.length >= 2) meta += ' · 里程 -';
-        meta += ' · ' + fmtTime(b.updatedAt);
+      f.books.slice().sort(function (x, y) { return natCmp(x.name, y.name); }).forEach(function (b) { // 按名称排序（1、2、3…）
+        var meta = b.stops.length + ' 个地点 · ' + fmtTime(b.updatedAt);
         var bTrackOn = trackState && trackState.type === 'book' && trackState.bookId === b.id;
         var row = document.createElement('div');
         row.className = 'book';
@@ -1215,6 +1300,29 @@
   }
 
   el('libBtn').onclick = function () { renderLib(); openModal('libModal'); };
+
+  // 分享整个文件夹：链接里打包所有路书（按名称排序），打开后先选路书再导航
+  function shareFolder(f) {
+    if (!f.books.length) { alert('文件夹里还没有路书'); return; }
+    if (location.protocol === 'file:') {
+      alert('你现在是直接双击打开的本地文件（file://），生成的链接手机访问不到。\n请用在线网址打开本页面再分享。');
+      return;
+    }
+    var data = {
+      folder: f.name,
+      books: f.books.slice().sort(function (x, y) { return natCmp(x.name, y.name); })
+        .map(function (b) {
+          return { name: b.name, stops: b.stops, routeDist: b.routeDist || null };
+        })
+    };
+    var url = location.origin + location.pathname + '#' + encodeData(data);
+    el('shareBox').style.display = 'block';
+    el('shareUrl').value = url;
+    el('qrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' +
+      encodeURIComponent(url);
+    closeModal('libModal');
+    el('shareBox').scrollIntoView();
+  }
 
   el('newFolderBtn').onclick = function () {
     var n = prompt('文件夹名称（如：新疆自驾）');
@@ -1519,7 +1627,7 @@
   if (hash) {
     try {
       var data = decodeData(decodeURIComponent(hash));
-      if (data && data.stops && data.stops.length) {
+      if (data && ((data.stops && data.stops.length) || (data.books && data.books.length))) {
         showViewer(data);
         // 查看模式下不加载地图（省流量），点"编辑此路书"时才加载
         el('editThis').addEventListener('click', function () { setTimeout(loadMapScript, 0); });
