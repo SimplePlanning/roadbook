@@ -504,16 +504,28 @@
   // ---------- 查看模式 ----------
   var viewFolder = null; // 文件夹分享时：整个文件夹的数据 {folder, books}
 
-  // 整条路书一次导航：第一个点为起点、最后一个点为终点、其余为途经点
+  // 整条路书一次导航：第一个点为起点、最后一个点为终点、其余为途经点。
+  // 高德 URI 的 via 官方只支持 1 个途经点（多个会被丢弃），
+  // 更多点改用高德网页版 dir 的 via[i] 参数（最多 16 个途经点），网页里可再打开 App
   function navAllUrl(stops) {
     var first = stops[0], last = stops[stops.length - 1];
-    var url = 'https://uri.amap.com/navigation?from=' + first.lng + ',' + first.lat + ',' +
-      encodeURIComponent(first.name) +
-      '&to=' + last.lng + ',' + last.lat + ',' + encodeURIComponent(last.name);
-    if (stops.length > 2) {
-      url += '&via=' + stops.slice(1, -1).map(function (s) { return s.lng + ',' + s.lat; }).join('|');
+    if (stops.length <= 3) {
+      var url = 'https://uri.amap.com/navigation?from=' + first.lng + ',' + first.lat + ',' +
+        encodeURIComponent(first.name) +
+        '&to=' + last.lng + ',' + last.lat + ',' + encodeURIComponent(last.name);
+      if (stops.length === 3) {
+        url += '&via=' + stops[1].lng + ',' + stops[1].lat + ',' + encodeURIComponent(stops[1].name);
+      }
+      return url + '&mode=car&policy=1&callnative=1&src=roadbook';
     }
-    return url + '&mode=car&callnative=1&src=roadbook';
+    var dir = 'https://www.amap.com/dir?type=car&policy=1' +
+      '&from[lnglat]=' + first.lng + ',' + first.lat + '&from[name]=' + encodeURIComponent(first.name) +
+      '&to[lnglat]=' + last.lng + ',' + last.lat + '&to[name]=' + encodeURIComponent(last.name);
+    stops.slice(1, -1).forEach(function (s, i) {
+      dir += '&via[' + i + '][lnglat]=' + s.lng + ',' + s.lat +
+        '&via[' + i + '][name]=' + encodeURIComponent(s.name);
+    });
+    return dir;
   }
 
   function showViewer(data) {
@@ -579,10 +591,10 @@
       all.textContent = '▶ 导航全部：' + data.stops[0].name + ' 出发' +
         (data.stops.length > 2 ? '，途经 ' + (data.stops.length - 2) + ' 个点' : '') +
         '，到 ' + data.stops[data.stops.length - 1].name;
-      if (data.stops.length > 18) { // 高德 URI 途经点上限 16 个
+      if (data.stops.length > 18) { // 途经点上限 16 个（高德 App 手动添加的上限）
         all.onclick = function (e) {
           e.preventDefault();
-          alert('高德一次导航最多支持 16 个途经点（共 18 个点），这份路书有 ' +
+          alert('一次导航最多支持 16 个途经点（共 18 个点），这份路书有 ' +
             data.stops.length + ' 个点。请用下方逐段导航，或把路书拆成两份。');
         };
       }
