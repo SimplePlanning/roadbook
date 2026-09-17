@@ -33,9 +33,10 @@
   .p-row label { display: block; font-size: 13px; color: #344054; margin-bottom: 6px; }
   #bookName {
     width: 100%; height: 34px; padding: 0 10px; font-size: 14px;
-    border: 1px solid #d0d5dd; border-radius: 6px; outline: none;
+    border: 1px solid #e5e7eb; border-radius: 6px; outline: none;
+    background: #f9fafb; color: #101828; cursor: default;
   }
-  #bookName:focus { border-color: #1e6fff; }
+  #bookName:focus { border-color: #e5e7eb; }
   .p-note { padding: 8px 14px 0; font-size: 12px; color: #98a2b3; }
 
   #addHint {
@@ -64,7 +65,7 @@
     display: flex; align-items: center; justify-content: center;
   }
   .stop .name {
-    flex: 1; border: none; background: transparent; font-size: 14px; outline: none; min-width: 0;
+    width: 100%; border: none; background: transparent; font-size: 14px; outline: none; min-width: 0;
   }
   .stop button {
     border: none; background: none; cursor: pointer; font-size: 13px;
@@ -72,6 +73,9 @@
   }
   .stop button:hover { color: #1e6fff; }
   .stop button.del:hover { color: #e04f5e; }
+  .stop .mid { flex: 1; min-width: 0; }
+  .stop .dist { font-size: 11px; color: #98a2b3; margin-top: 2px; }
+  #distInfo { display: none; padding: 10px 14px 0; font-size: 12px; color: #667085; }
 
   .noroute {
     display: flex; align-items: center; gap: 6px; padding: 0 14px 10px;
@@ -151,6 +155,27 @@
   }
   .tools button:hover { color: #1e6fff; }
   .tools button.on { background: #1e6fff; color: #fff; }
+
+  /* ---- 轨迹图例（路书库里「轨迹」按钮的浮动说明） ---- */
+  #trackLegend {
+    display: none; position: absolute; top: 64px; left: 14px; z-index: 9;
+    background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.14);
+    padding: 8px 10px; max-width: 240px;
+  }
+  #trackLegend .tl-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    font-size: 12px; color: #98a2b3; margin-bottom: 4px;
+  }
+  #trackLegend .tl-close {
+    border: none; background: none; cursor: pointer; color: #98a2b3; font-size: 12px; padding: 0 2px;
+  }
+  #trackLegend .tl-close:hover { color: #344054; }
+  #trackLegend .tl-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+  #trackLegend .tl-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+  #trackLegend .tl-name {
+    font-size: 12px; color: #101828;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 
   /* ---- 地图上的候选点气泡 ---- */
   .map-bubble {
@@ -277,6 +302,7 @@
   }
   .book .b-meta { font-size: 11px; color: #98a2b3; }
   .book .open-btn { color: #1e6fff; }
+  .track-btn.on { color: #1e6fff; font-weight: 600; }
 
   /* ---- GitHub 上传状态 ---- */
   #ghStatus { font-size: 12px; margin-top: 8px; line-height: 1.6; color: #667085; word-break: break-all; }
@@ -305,13 +331,14 @@
     <div id="panelBody">
       <div class="p-row">
         <label>名称</label>
-        <input id="bookName" placeholder="必填，最多支持40字" maxlength="40" value="我的路书">
+        <input id="bookName" value="我的路书" readonly tabindex="-1" title="名称在「存到路书库」时填写，在路书库里可改名">
       </div>
-      <div class="p-note">请文明用语，勿包含违法违规内容</div>
+      <div class="p-note">名称只读：在「存到路书库」时填写，在路书库里可改名</div>
       <div id="addHint">
         <span class="plus">+</span>
         <span class="txt">搜索或点击地图增加地点，最多支持50个点</span>
       </div>
+      <div id="distInfo"></div>
       <div id="stopList"></div>
       <div id="routeMsg"></div>
       <label class="noroute"><input type="checkbox" id="noRoute"> 地点之间不规划路线</label>
@@ -342,6 +369,7 @@
         <button id="clearAllBtn" title="清空全部地点">清空</button>
       </div>
     </div>
+    <div id="trackLegend"></div>
     <div id="map"></div>
   </div>
 
@@ -453,6 +481,23 @@
   }
   function el(id) { return document.getElementById(id); }
 
+  // ---------- 距离（直线，Haversine） ----------
+  function distMeters(a, b) {
+    var R = 6371000, rad = Math.PI / 180;
+    var dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function pathMeters(list) {
+    var t = 0;
+    for (var i = 1; i < list.length; i++) t += distMeters(list[i - 1], list[i]);
+    return t;
+  }
+  function fmtKm(m) {
+    return m < 1000 ? Math.round(m) + ' 米' : (m / 1000).toFixed(1) + ' 公里';
+  }
+
   if (/MicroMessenger/i.test(navigator.userAgent)) {
     el('wechatTip').style.display = 'block';
   }
@@ -464,7 +509,9 @@
     el('mapWrap').style.display = 'none';
     el('viewer').style.display = 'block';
     el('vName').textContent = data.name || '路书';
-    el('vMeta').textContent = '共 ' + data.stops.length + ' 个途经点 · 逐段点击导航';
+    el('vMeta').textContent = '共 ' + data.stops.length + ' 个途经点' +
+      (data.stops.length >= 2 ? ' · 直线全程约 ' + fmtKm(pathMeters(data.stops)) : '') +
+      ' · 逐段点击导航';
     document.title = (data.name || '路书') + ' · 高德导航';
 
     var box = el('vLegs');
@@ -472,12 +519,14 @@
     data.stops.forEach(function (s, i) {
       var navUrl = 'https://uri.amap.com/navigation?to=' + s.lng + ',' + s.lat + ',' +
         encodeURIComponent(s.name) + '&mode=car&callnative=1&src=roadbook';
+      var coord = s.lng.toFixed(5) + ', ' + s.lat.toFixed(5);
+      var seg = i > 0 ? '距上一点 ' + fmtKm(distMeters(data.stops[i - 1], s)) + '（直线）· ' : '';
       var div = document.createElement('div');
       div.className = 'leg';
       div.innerHTML =
         '<div class="idx">' + (i + 1) + '</div>' +
         '<div class="info"><div class="t">' + escapeHtml(s.name) + '</div>' +
-        '<div class="c">' + s.lng.toFixed(5) + ', ' + s.lat.toFixed(5) + '</div></div>' +
+        '<div class="c">' + seg + coord + '</div></div>' +
         '<a class="nav" href="' + navUrl + '">导航</a>';
       box.appendChild(div);
     });
@@ -505,7 +554,7 @@
   }
 
   // ---------- 编辑模式 ----------
-  var map = null, markers = [], driving = null, geocoder = null, placeSearch = null;
+  var map = null, markers = [], driving = null, geocoder = null, placeSearch = null, autoComplete = null;
   var infoWindow = null, candidateMarker = null, satLayer = null;
 
   // 在地图上显示候选点气泡（名称 + 加号），点 + 才加入路书
@@ -540,6 +589,7 @@
     driving = new AMap.Driving({ map: map, hideMarkers: true });
     geocoder = new AMap.Geocoder();
     placeSearch = new AMap.PlaceSearch({ city: '全国', citylimit: false, pageSize: 10 });
+    autoComplete = new AMap.AutoComplete({ city: '全国', citylimit: false });
     infoWindow = new AMap.InfoWindow({
       isCustom: true, offset: new AMap.Pixel(0, -34), autoMove: true
     });
@@ -547,49 +597,94 @@
       if (candidateMarker) { candidateMarker.setMap(null); candidateMarker = null; }
     });
 
+    // 统一渲染下拉列表（输入提示 / 回车搜索共用），items: {name, addr, lng, lat}
+    function renderSearchRows(items) {
+      var box = el('searchResults');
+      box.innerHTML = '';
+      box.classList.add('has');
+      if (!items.length) {
+        box.innerHTML = '<div class="sug"><div class="s-info"><div class="s-addr">没有找到相关地点，换个关键词试试</div></div></div>';
+        return;
+      }
+      items.forEach(function (it) {
+        var row = document.createElement('div');
+        row.className = 'sug';
+        row.innerHTML =
+          '<div class="s-info"><div class="s-name">' + escapeHtml(it.name) + '</div>' +
+          '<div class="s-addr">' + escapeHtml(it.addr || '') + '</div></div>' +
+          '<button class="add" title="加入路书">+</button>';
+        // 点行：地图定位并弹出带 + 的气泡
+        row.querySelector('.s-info').onclick = function () {
+          map.setZoomAndCenter(14, [it.lng, it.lat]);
+          showCandidate(it.name, it.lng, it.lat);
+        };
+        // 列表上的 + 同样可加入
+        row.querySelector('.add').onclick = function (e) {
+          e.stopPropagation();
+          if (this.classList.contains('done')) return;
+          addStop(it.name, it.lng, it.lat);
+          this.classList.add('done');
+          this.textContent = '✓';
+        };
+        box.appendChild(row);
+      });
+    }
+
+    // 输入即出下拉：防抖 300ms，用 AutoComplete 提示；回车仍走完整 POI 搜索
+    var sugTimer = null, composing = false;
+    function hideSearchResults() {
+      el('searchResults').classList.remove('has');
+      el('searchResults').innerHTML = '';
+    }
+    function doSuggest() {
+      var kw = el('searchInput').value.trim();
+      if (!kw) return;
+      autoComplete.search(kw, function (status, result) {
+        if (el('searchInput').value.trim() !== kw) return; // 过期结果丢弃
+        var items = [];
+        if (status === 'complete' && result.tips) {
+          result.tips.forEach(function (tip) {
+            if (!tip.location || !tip.name) return;
+            var addr = String(tip.district || '');
+            if (tip.address) addr += String(tip.address);
+            items.push({ name: String(tip.name), addr: addr, lng: tip.location.lng, lat: tip.location.lat });
+          });
+        }
+        renderSearchRows(items);
+      });
+    }
     function doSearch() {
       var kw = el('searchInput').value.trim();
       if (!kw) return;
       placeSearch.search(kw, function (status, result) {
-        var box = el('searchResults');
-        box.innerHTML = '';
-        box.classList.add('has');
-        if (status !== 'complete' || !result.poiList || !result.poiList.pois.length) {
-          box.innerHTML = '<div class="sug"><div class="s-info"><div class="s-addr">没有找到相关地点，换个关键词试试</div></div></div>';
-          return;
+        var items = [];
+        if (status === 'complete' && result.poiList) {
+          result.poiList.pois.forEach(function (poi) {
+            if (!poi.location) return;
+            items.push({
+              name: poi.name, addr: String(poi.address || ''),
+              lng: poi.location.lng, lat: poi.location.lat
+            });
+          });
         }
-        result.poiList.pois.forEach(function (poi) {
-          if (!poi.location) return;
-          var row = document.createElement('div');
-          row.className = 'sug';
-          row.innerHTML =
-            '<div class="s-info"><div class="s-name">' + escapeHtml(poi.name) + '</div>' +
-            '<div class="s-addr">' + escapeHtml(poi.address || '') + '</div></div>' +
-            '<button class="add" title="加入路书">+</button>';
-          // 点行：地图定位并弹出带 + 的气泡
-          row.querySelector('.s-info').onclick = function () {
-            map.setZoomAndCenter(14, [poi.location.lng, poi.location.lat]);
-            showCandidate(poi.name, poi.location.lng, poi.location.lat);
-          };
-          // 列表上的 + 同样可加入
-          row.querySelector('.add').onclick = function (e) {
-            e.stopPropagation();
-            if (this.classList.contains('done')) return;
-            addStop(poi.name, poi.location.lng, poi.location.lat);
-            this.classList.add('done');
-            this.textContent = '✓';
-          };
-          box.appendChild(row);
-        });
+        renderSearchRows(items);
       });
     }
     el('searchInput').onkeydown = function (e) { if (e.key === 'Enter') doSearch(); };
     el('searchInput').oninput = function () {
-      if (!this.value.trim()) {
-        el('searchResults').classList.remove('has');
-        el('searchResults').innerHTML = '';
-      }
+      if (composing) return;
+      var kw = this.value.trim();
+      clearTimeout(sugTimer);
+      if (!kw) { hideSearchResults(); return; }
+      sugTimer = setTimeout(doSuggest, 300);
     };
+    // 中文输入法组词期间不触发联想，组词完成再触发
+    el('searchInput').addEventListener('compositionstart', function () { composing = true; });
+    el('searchInput').addEventListener('compositionend', function () {
+      composing = false;
+      clearTimeout(sugTimer);
+      if (this.value.trim()) sugTimer = setTimeout(doSuggest, 300);
+    });
 
     // 点地图：反查地名后弹出候选气泡，点 + 才加入
     map.on('click', function (e) {
@@ -644,7 +739,9 @@
       row.className = 'stop';
       row.innerHTML =
         '<span class="idx">' + (i + 1) + '</span>' +
-        '<input class="name" value="' + escapeHtml(s.name) + '">' +
+        '<div class="mid"><input class="name" value="' + escapeHtml(s.name) + '">' +
+        (i > 0 ? '<div class="dist">距上一点 ' + fmtKm(distMeters(stops[i - 1], s)) + '（直线）</div>' : '') +
+        '</div>' +
         '<button data-a="up" title="上移">↑</button>' +
         '<button data-a="down" title="下移">↓</button>' +
         '<button class="del" data-a="del" title="删除">✕</button>';
@@ -659,6 +756,15 @@
       };
       list.appendChild(row);
     });
+
+    // 总里程（直线）
+    var di = el('distInfo');
+    if (stops.length >= 2) {
+      di.style.display = 'block';
+      di.textContent = '共 ' + stops.length + ' 个地点 · 直线全程约 ' + fmtKm(pathMeters(stops));
+    } else {
+      di.style.display = 'none';
+    }
 
     // 地图标记
     if (!map) return;
@@ -792,6 +898,95 @@
     if (map && stops.length) map.setFitView(null, false, [80, 80, 80, 80]);
   }
 
+  // ---------- 轨迹查看（路书库里的「轨迹」按钮，只叠加显示，不动当前编辑内容） ----------
+  var TRACK_COLORS = ['#1e6fff', '#e04f5e', '#12b76a', '#f79009', '#7a5af8', '#0ba5ec', '#ee46bc', '#6172f3'];
+  var trackOverlays = [];  // 画在地图上的轨迹覆盖物（折线 + 圆点）
+  var trackState = null;   // {type:'book'|'folder', folderId, bookId}
+
+  function clearTrack() {
+    trackOverlays.forEach(function (o) { o.setMap(null); });
+    trackOverlays = [];
+    trackState = null;
+    el('trackLegend').style.display = 'none';
+    el('trackLegend').innerHTML = '';
+  }
+
+  function drawBookTrack(book, color) {
+    var path = book.stops.map(function (s) { return [s.lng, s.lat]; });
+    if (path.length >= 2) {
+      trackOverlays.push(new AMap.Polyline({
+        path: path, map: map, strokeColor: color,
+        strokeWeight: 5, strokeOpacity: 0.85, lineJoin: 'round'
+      }));
+    }
+    book.stops.forEach(function (s) {
+      trackOverlays.push(new AMap.CircleMarker({
+        center: [s.lng, s.lat], radius: 6, map: map,
+        strokeColor: '#fff', strokeWeight: 2, fillColor: color, fillOpacity: 1
+      }));
+    });
+  }
+
+  function showTrackLegend(items) {
+    var lg = el('trackLegend');
+    lg.innerHTML = '';
+    var head = document.createElement('div');
+    head.className = 'tl-head';
+    head.innerHTML = '<span>显示中的轨迹（不影响当前编辑）</span><button class="tl-close">✕</button>';
+    head.querySelector('.tl-close').onclick = clearTrack;
+    lg.appendChild(head);
+    items.forEach(function (it) {
+      var d = document.createElement('div');
+      d.className = 'tl-row';
+      d.innerHTML = '<span class="tl-dot" style="background:' + it.color + '"></span>' +
+        '<span class="tl-name" title="' + escapeHtml(it.name) + '">' + escapeHtml(it.name) + '</span>';
+      lg.appendChild(d);
+    });
+    lg.style.display = 'block';
+  }
+
+  // 再点一次同一个按钮 = 隐藏
+  function toggleBookTrack(folderId, bookId) {
+    if (trackState && trackState.type === 'book' && trackState.bookId === bookId) {
+      clearTrack(); renderLib(); return;
+    }
+    if (!map) { alert('地图还没加载好，稍后再试'); return; }
+    var hit = findBook(loadLib(), folderId, bookId);
+    if (!hit) { alert('这份路书已不存在'); renderLib(); return; }
+    clearTrack();
+    trackState = { type: 'book', folderId: folderId, bookId: bookId };
+    drawBookTrack(hit.book, TRACK_COLORS[0]);
+    showTrackLegend([{ name: hit.folder.name + ' / ' + hit.book.name, color: TRACK_COLORS[0] }]);
+    if (trackOverlays.length) map.setFitView(trackOverlays, false, [80, 80, 80, 80]);
+    renderLib();
+    closeModal('libModal'); // 收起弹层，直接看地图
+  }
+
+  function toggleFolderTrack(folderId) {
+    if (trackState && trackState.type === 'folder' && trackState.folderId === folderId) {
+      clearTrack(); renderLib(); return;
+    }
+    if (!map) { alert('地图还没加载好，稍后再试'); return; }
+    var lib = loadLib();
+    var folder = null;
+    for (var i = 0; i < lib.folders.length; i++) {
+      if (lib.folders[i].id === folderId) { folder = lib.folders[i]; break; }
+    }
+    if (!folder || !folder.books.length) { alert('文件夹里还没有路书'); return; }
+    clearTrack();
+    trackState = { type: 'folder', folderId: folderId };
+    var legend = [];
+    folder.books.forEach(function (b, i) {
+      var c = TRACK_COLORS[i % TRACK_COLORS.length];
+      drawBookTrack(b, c);
+      legend.push({ name: b.name, color: c });
+    });
+    showTrackLegend(legend);
+    if (trackOverlays.length) map.setFitView(trackOverlays, false, [80, 80, 80, 80]);
+    renderLib();
+    closeModal('libModal');
+  }
+
   // ---------- 面板交互 ----------
   el('collapseBtn').onclick = function () {
     var p = el('panel');
@@ -899,14 +1094,18 @@
 
       var head = document.createElement('div');
       head.className = 'folder-head';
+      var fTrackOn = trackState && trackState.type === 'folder' && trackState.folderId === f.id;
       head.innerHTML =
         '<span class="arrow">▾</span>' +
         '<span class="f-name">' + escapeHtml(f.name) + '</span>' +
         '<span class="f-count">' + f.books.length + ' 份</span>' +
+        '<button class="track-btn' + (fTrackOn ? ' on' : '') + '" data-a="track" title="在地图上显示整个文件夹的轨迹">' +
+          (fTrackOn ? '隐藏轨迹' : '轨迹') + '</button>' +
         '<button data-a="rename" title="文件夹改名">✎</button>' +
         '<button class="del" data-a="del" title="删除文件夹">✕</button>';
       head.onclick = function (e) {
         var a = e.target.getAttribute && e.target.getAttribute('data-a');
+        if (a === 'track') { toggleFolderTrack(f.id); return; }
         if (a === 'rename') {
           var n = prompt('文件夹名称', f.name);
           if (n && n.trim()) { f.name = n.trim().slice(0, 40); saveLibData(lib); renderLib(); }
@@ -916,6 +1115,7 @@
           if (confirm('删除文件夹「' + f.name + '」及里面 ' + f.books.length + ' 份路书？')) {
             lib.folders = lib.folders.filter(function (x) { return x.id !== f.id; });
             if (currentBookRef && currentBookRef.folderId === f.id) currentBookRef = null;
+            if (trackState && trackState.folderId === f.id) clearTrack();
             saveLibData(lib); renderLib();
           }
           return;
@@ -928,16 +1128,23 @@
       var books = document.createElement('div');
       books.className = 'folder-books';
       f.books.slice().reverse().forEach(function (b) { // 新的在前
+        var meta = b.stops.length + ' 个地点';
+        if (b.stops.length >= 2) meta += ' · 约 ' + fmtKm(pathMeters(b.stops)) + '（直线）';
+        meta += ' · ' + fmtTime(b.updatedAt);
+        var bTrackOn = trackState && trackState.type === 'book' && trackState.bookId === b.id;
         var row = document.createElement('div');
         row.className = 'book';
         row.innerHTML =
           '<div class="b-info"><div class="b-name">' + escapeHtml(b.name) + '</div>' +
-          '<div class="b-meta">' + b.stops.length + ' 个地点 · ' + fmtTime(b.updatedAt) + '</div></div>' +
+          '<div class="b-meta">' + meta + '</div></div>' +
+          '<button class="track-btn' + (bTrackOn ? ' on' : '') + '" data-a="track" title="在地图上显示这份路书的轨迹">' +
+            (bTrackOn ? '隐藏' : '轨迹') + '</button>' +
           '<button class="open-btn" data-a="open">打开</button>' +
           '<button data-a="rename">改名</button>' +
           '<button class="del" data-a="del">删除</button>';
         row.onclick = function (e) {
           var a = e.target.getAttribute && e.target.getAttribute('data-a');
+          if (a === 'track') { toggleBookTrack(f.id, b.id); return; }
           if (a === 'rename') {
             var n = prompt('路书名称', b.name);
             if (n && n.trim()) { b.name = n.trim().slice(0, 40); b.updatedAt = Date.now(); saveLibData(lib); renderLib(); }
@@ -947,6 +1154,7 @@
             if (confirm('删除路书「' + b.name + '」？')) {
               f.books = f.books.filter(function (x) { return x.id !== b.id; });
               if (currentBookRef && currentBookRef.bookId === b.id) currentBookRef = null;
+              if (trackState && trackState.type === 'book' && trackState.bookId === b.id) clearTrack();
               saveLibData(lib); renderLib();
             }
             return;
@@ -1259,7 +1467,7 @@
     window._AMapSecurityConfig = { securityJsCode: secret || '' };
     var s = document.createElement('script');
     s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + key +
-      '&plugin=AMap.PlaceSearch,AMap.Driving,AMap.Geocoder,AMap.ToolBar,AMap.Scale';
+      '&plugin=AMap.PlaceSearch,AMap.AutoComplete,AMap.Driving,AMap.Geocoder,AMap.ToolBar,AMap.Scale';
     s.onload = function () { mapLoading = false; initMap(); };
     s.onerror = function () {
       mapLoading = false;
