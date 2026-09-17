@@ -407,16 +407,19 @@
       <h3>GitHub 同步（备份 / 多台电脑）</h3>
       <button class="m-close" data-close="ghModal">✕</button>
     </div>
-    <p>整个路书库（所有文件夹和路书）存为仓库里的一个 JSON 文件：<b>上传</b>=用本地覆盖仓库（备份），
+    <p>路书库按「目录 = 文件夹，文件 = 路书」的结构存到仓库，例如
+       <code>roadbooks/新疆自驾/第一天.json</code>，每份路书一个独立文件，可直接在 GitHub 上查看。<br>
+       <b>上传</b>=本地整库覆盖仓库（一个 commit，本地删掉的路书同步从仓库删除）；
        <b>拉取</b>=用仓库覆盖本地（同步到这台电脑）。<br>
        到 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a>
        生成 Token（classic 勾 <code>repo</code> 权限；或 fine-grained 只给目标仓库 Contents 读写权限）。
        Token 只存在这台电脑的浏览器 localStorage 里，每台电脑要各填一次。<br>
-       注意：提交到<b>公开仓库</b>（如本站的 gh-pages）后路书数据任何人可见，介意的话填一个你自己的私有仓库。</p>
+       注意：文件夹/路书名里的 <code>/ \ : * ? " &lt; &gt; |</code> 会替换成 -；
+       提交到<b>公开仓库</b>（如本站的 gh-pages）后路书数据任何人可见，介意的话填一个你自己的私有仓库。</p>
     <input id="ghToken" type="password" placeholder="GitHub Token">
     <input id="ghRepo" placeholder="仓库 owner/repo，如 SimplePlanning/roadbook">
     <input id="ghBranch" placeholder="分支（默认 gh-pages）">
-    <input id="ghPath" placeholder="文件路径（默认 roadbooks.json）">
+    <input id="ghPath" placeholder="目录（默认 roadbooks）">
     <div class="btn-row">
       <button class="btn" id="ghUploadBtn">上传（备份到仓库）</button>
       <button class="btn secondary" id="ghPullBtn">拉取（覆盖本地）</button>
@@ -1047,12 +1050,12 @@
     alert('已保存到路书库「' + folder.name + '」');
   };
 
-  // ---------- GitHub 同步（Contents API：上传=本地覆盖仓库，拉取=仓库覆盖本地） ----------
+  // ---------- GitHub 同步（Git Data API：目录=文件夹，文件=路书，整库一次提交） ----------
   el('ghOpenBtn').onclick = function () {
     el('ghToken').value = localStorage.getItem('gh_token') || '';
     el('ghRepo').value = localStorage.getItem('gh_repo') || '';
     el('ghBranch').value = localStorage.getItem('gh_branch') || 'gh-pages';
-    el('ghPath').value = localStorage.getItem('gh_path') || 'roadbooks.json';
+    el('ghPath').value = localStorage.getItem('gh_path') || 'roadbooks';
     ghStatus('', '');
     openModal('ghModal');
   };
@@ -1073,9 +1076,11 @@
         .replace(/\.git$/, '')
         .replace(/\/+$/, ''),
       branch: el('ghBranch').value.trim() || 'gh-pages',
-      path: el('ghPath').value.trim() || 'roadbooks.json'
+      // 存的是目录；兼容旧版默认值 roadbooks.json
+      path: el('ghPath').value.trim().replace(/^\/+|\/+$/g, '').replace(/\.json$/, '') || 'roadbooks'
     };
     el('ghRepo').value = cfg.repo;
+    el('ghPath').value = cfg.path;
     if (!cfg.token) { ghStatus('请填写 GitHub Token', 'err'); return null; }
     if (!/^[\w.-]+\/[\w.-]+$/.test(cfg.repo)) { ghStatus('仓库格式应为 owner/repo', 'err'); return null; }
     localStorage.setItem('gh_token', cfg.token);
@@ -1085,26 +1090,10 @@
     return cfg;
   }
 
-  // 校验/清洗拉下来的数据，防止坏文件搞坏本地库
-  function validateLib(d) {
-    if (!d || !Array.isArray(d.folders)) return null;
-    var folders = [];
-    d.folders.forEach(function (f) {
-      if (!f || typeof f.name !== 'string' || !Array.isArray(f.books)) return;
-      var books = [];
-      f.books.forEach(function (b) {
-        if (!b || typeof b.name !== 'string' || !Array.isArray(b.stops)) return;
-        var stops = [];
-        b.stops.forEach(function (s) {
-          if (s && typeof s.lng === 'number' && typeof s.lat === 'number') {
-            stops.push({ name: String(s.name || '途经点'), lng: s.lng, lat: s.lat });
-          }
-        });
-        books.push({ id: b.id || uid('b'), name: b.name, stops: stops, updatedAt: b.updatedAt || Date.now() });
-      });
-      folders.push({ id: f.id || uid('f'), name: f.name, books: books });
-    });
-    return { folders: folders };
+  // 文件名净化：路径非法字符换成 -
+  function sanitizeName(s) {
+    var r = String(s).replace(/[\\/:*?"<>|]/g, '-').trim();
+    return r || '未命名';
   }
 
   function countBooks(lib) {
@@ -1113,6 +1102,35 @@
     return n;
   }
 
+  // GitHub API 请求封装：非 2xx 直接抛错
+  async function ghApi(cfg, method, url, body) {
+    var res = await fetch(url, {
+      method: method,
+      headers: {
+        'Authorization': 'Bearer ' + cfg.token,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    var text = await res.text();
+    if (!res.ok) {
+      var msg = text;
+      try { msg = JSON.parse(text).message || text; } catch (e) {}
+      throw new Error('HTTP ' + res.status + '：' + String(msg).slice(0, 200));
+    }
+    return text ? JSON.parse(text) : {};
+  }
+
+  function ghErrHint(e) {
+    var msg = String(e && e.message || e);
+    if (msg.indexOf('HTTP 404') === 0) {
+      msg += '（检查：仓库名拼写、分支名、Token 是否有该仓库的读写权限）';
+    }
+    return msg;
+  }
+
+  // 上传：路书库 → cfg.path/文件夹/路书.json，建树一次提交；本地已删除的文件夹/路书同步从仓库删除
   el('ghUploadBtn').onclick = async function () {
     var cfg = ghReadConfig();
     if (!cfg) return;
@@ -1120,66 +1138,97 @@
     if (!lib.folders.length) { ghStatus('路书库是空的，先保存至少一份路书', 'err'); return; }
 
     ghStatus('上传中…', '');
-    var headers = {
-      'Authorization': 'Bearer ' + cfg.token,
-      'Accept': 'application/vnd.github+json',
-      'Content-Type': 'application/json'
-    };
-    var api = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + cfg.path;
     try {
-      // 文件已存在时必须先拿到 sha 才能覆盖更新；404 说明是新建
-      var sha;
-      var cur = await fetch(api + '?ref=' + encodeURIComponent(cfg.branch), { headers: headers });
-      if (cur.ok) {
-        sha = (await cur.json()).sha;
-      } else if (cur.status !== 404) {
-        throw new Error('查询文件失败：HTTP ' + cur.status + ' ' + (await cur.text()).slice(0, 200));
-      }
-      var body = {
-        message: '更新路书库（' + lib.folders.length + ' 个文件夹）',
-        content: encodeData(lib),
-        branch: cfg.branch
-      };
-      if (sha) body.sha = sha;
-      var res = await fetch(api, { method: 'PUT', headers: headers, body: JSON.stringify(body) });
-      if (res.status === 404) {
-        throw new Error('提交失败：404——仓库名/分支名错误，或 Token 没有该仓库的写权限' +
-          '（Token 必须是仓库所属账号生成的；classic 需勾 repo；fine-grained 需选中该仓库并给 Contents 读写权限）');
-      }
-      if (!res.ok) {
-        throw new Error('提交失败：HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200));
-      }
-      ghStatus('上传成功 ✓ 已提交到 ' + cfg.repo + ' 的 ' + cfg.branch + ' 分支 ' + cfg.path, 'ok');
+      var base = 'https://api.github.com/repos/' + cfg.repo;
+      // 1. 当前分支头 commit 及其树
+      var ref = await ghApi(cfg, 'GET', base + '/git/refs/heads/' + cfg.branch);
+      var head = await ghApi(cfg, 'GET', base + '/git/commits/' + ref.object.sha);
+
+      // 2. 本地路书库 → 文件集合（路径去重）
+      var entries = [];
+      var usedPaths = {};
+      lib.folders.forEach(function (f) {
+        f.books.forEach(function (b) {
+          var p = cfg.path + '/' + sanitizeName(f.name) + '/' + sanitizeName(b.name) + '.json';
+          if (usedPaths[p]) p = p.replace(/\.json$/, '-' + b.id + '.json');
+          usedPaths[p] = true;
+          entries.push({
+            path: p, mode: '100644', type: 'blob',
+            content: JSON.stringify({ name: b.name, updatedAt: b.updatedAt, stops: b.stops }, null, 2)
+          });
+        });
+      });
+
+      // 3. 远端目录里多出来的旧文件：sha 置 null 删掉
+      var oldTree = await ghApi(cfg, 'GET', base + '/git/trees/' + head.tree.sha + '?recursive=1');
+      (oldTree.tree || []).forEach(function (t) {
+        if (t.type === 'blob' && t.path.indexOf(cfg.path + '/') === 0 &&
+            /\.json$/.test(t.path) && !usedPaths[t.path]) {
+          entries.push({ path: t.path, mode: '100644', type: 'blob', sha: null });
+        }
+      });
+
+      // 4. 在分支现有树的基础上建新树 → 生成 commit → 移动分支指针
+      var tree = await ghApi(cfg, 'POST', base + '/git/trees', { base_tree: head.tree.sha, tree: entries });
+      var commit = await ghApi(cfg, 'POST', base + '/git/commits', {
+        message: '更新路书库（' + lib.folders.length + ' 个文件夹 / ' + countBooks(lib) + ' 份路书）',
+        tree: tree.sha,
+        parents: [ref.object.sha]
+      });
+      await ghApi(cfg, 'PATCH', base + '/git/refs/heads/' + cfg.branch, { sha: commit.sha });
+      ghStatus('上传成功 ✓ ' + cfg.repo + ' @ ' + cfg.branch + '/' + cfg.path + '/（' +
+        lib.folders.length + ' 个文件夹 / ' + countBooks(lib) + ' 份路书）', 'ok');
     } catch (e) {
-      ghStatus(String(e && e.message || e), 'err');
+      ghStatus(ghErrHint(e), 'err');
     }
   };
 
+  // 拉取：递归读目录树，逐文件取回内容，按 目录/文件夹/路书.json 重建本地路书库
   el('ghPullBtn').onclick = async function () {
     var cfg = ghReadConfig();
     if (!cfg) return;
 
     ghStatus('拉取中…', '');
-    var headers = {
-      'Authorization': 'Bearer ' + cfg.token,
-      'Accept': 'application/vnd.github+json'
-    };
-    var api = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + cfg.path;
     try {
-      var res = await fetch(api + '?ref=' + encodeURIComponent(cfg.branch), { headers: headers });
-      if (res.status === 404) {
-        ghStatus('仓库里还没有 ' + cfg.path + '，先在任意一台电脑上传一次' +
-          '（若确认已上传过，则是仓库名/分支名错误或 Token 无权访问该仓库）', 'err');
+      var base = 'https://api.github.com/repos/' + cfg.repo;
+      var ref = await ghApi(cfg, 'GET', base + '/git/refs/heads/' + cfg.branch);
+      var tree = await ghApi(cfg, 'GET', base + '/git/trees/' + ref.object.sha + '?recursive=1');
+      var files = (tree.tree || []).filter(function (t) {
+        return t.type === 'blob' && t.path.indexOf(cfg.path + '/') === 0 && /\.json$/.test(t.path);
+      });
+      if (!files.length) {
+        ghStatus('仓库的 ' + cfg.path + '/ 目录下还没有路书，先在任意一台电脑上传一次', 'err');
         return;
       }
-      if (!res.ok) {
-        throw new Error('拉取失败：HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200));
-      }
-      var data = await res.json();
-      if (!data.content) throw new Error('读取文件内容失败');
-      // API 返回的 base64 带换行，先去掉空白再解码
-      var remote = validateLib(decodeData(String(data.content).replace(/\s/g, '')));
-      if (!remote) throw new Error('文件内容不是有效的路书库数据');
+      var folderMap = {};
+      await Promise.all(files.map(function (t) {
+        return ghApi(cfg, 'GET', base + '/git/blobs/' + t.sha).then(function (blob) {
+          var parts = t.path.slice(cfg.path.length + 1).split('/');
+          if (parts.length !== 2) return; // 只认 目录/文件夹/书.json 两层结构
+          var fname = parts[1].replace(/\.json$/, '');
+          var d = null;
+          try { d = decodeData(String(blob.content).replace(/\s/g, '')); } catch (e) {}
+          var stops = [];
+          if (d && Array.isArray(d.stops)) {
+            d.stops.forEach(function (s) {
+              if (s && typeof s.lng === 'number' && typeof s.lat === 'number') {
+                stops.push({ name: String(s.name || '途经点'), lng: s.lng, lat: s.lat });
+              }
+            });
+          }
+          if (!folderMap[parts[0]]) folderMap[parts[0]] = [];
+          folderMap[parts[0]].push({
+            id: uid('b'),
+            name: d && typeof d.name === 'string' ? d.name : fname,
+            stops: stops,
+            updatedAt: d && d.updatedAt || Date.now()
+          });
+        });
+      }));
+      var remote = { folders: [] };
+      Object.keys(folderMap).forEach(function (fname) {
+        remote.folders.push({ id: uid('f'), name: fname, books: folderMap[fname] });
+      });
       var localCount = countBooks(loadLib());
       if (localCount > 0 &&
           !confirm('拉取会用仓库里的路书库覆盖本地，本地 ' + localCount + ' 份未上传的路书会丢失。继续？')) {
@@ -1194,7 +1243,7 @@
       ghStatus('拉取成功 ✓ 已覆盖本地：' + remote.folders.length + ' 个文件夹 / ' +
         countBooks(remote) + ' 份路书', 'ok');
     } catch (e) {
-      ghStatus(String(e && e.message || e), 'err');
+      ghStatus(ghErrHint(e), 'err');
     }
   };
 

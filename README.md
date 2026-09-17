@@ -29,12 +29,23 @@ https://simpleplanning.github.io/roadbook/
 
 ## GitHub 同步（备份 + 多台电脑）
 
-路书库只存在当前浏览器里（按域名隔离，换浏览器/设备看不到）。点路书库弹层里的「GitHub 同步」，可把整个路书库作为仓库里的一个 JSON 文件来备份和多电脑同步：
+路书库只存在当前浏览器里（按域名隔离，换浏览器/设备看不到）。点路书库弹层里的「GitHub 同步」，可把整个路书库按「目录 = 文件夹，文件 = 路书」的结构存到仓库：
 
-- **上传**：用本地路书库覆盖仓库文件
-- **拉取**：用仓库文件覆盖本地路书库（本地有未上传的路书时会先弹确认）
+```
+roadbooks/
+├── 新疆自驾/
+│   ├── 第一天.json
+│   └── 第二天.json
+└── 海南环线/
+    └── 东线.json
+```
 
-首次配置：到 [github.com/settings/tokens](https://github.com/settings/tokens) 生成 Token（classic 勾 `repo` 权限；或 fine-grained 只给目标仓库 Contents 读写权限），在弹窗里填 Token、仓库（`owner/repo`）、分支（默认 `gh-pages`）、文件路径（默认 `roadbooks.json`）。Token 和配置存在这台电脑的 localStorage，下次自动填好。
+每份路书是独立的 .json 文件（含名称、时间、全部地点坐标），可直接在 GitHub 网页上查看。
+
+- **上传**：本地整库覆盖仓库目录，一次同步只产生一个 commit；本地删掉的文件夹/路书会同步从仓库删除
+- **拉取**：读取目录下所有 .json 重建本地路书库（覆盖本地，本地有未上传的路书时会先弹确认）
+
+首次配置：到 [github.com/settings/tokens](https://github.com/settings/tokens) 生成 Token（classic 勾 `repo` 权限；或 fine-grained 只给目标仓库 Contents 读写权限），在弹窗里填 Token、仓库（`owner/repo`）、分支（默认 `gh-pages`）、目录（默认 `roadbooks`）。Token 和配置存在这台电脑的 localStorage，下次自动填好。
 
 ### 多台电脑协作流程
 
@@ -47,7 +58,8 @@ https://simpleplanning.github.io/roadbook/
 
 其他注意：
 
-- **提交到公开仓库后路书数据任何人可见**（本站是公开 Pages，文件会出现在 `https://simpleplanning.github.io/roadbook/roadbooks.json`），介意的话填一个自己的私有仓库
+- **提交到公开仓库后路书数据任何人可见**（本站是公开 Pages，`roadbooks/` 目录会出现在 `https://simpleplanning.github.io/roadbook/roadbooks/` 下），介意的话填一个自己的私有仓库
+- 文件夹/路书名称里的 `/ \ : * ? " < > |` 会被替换成 `-`（文件路径限制）
 - 如果打不开 github.com 网页版，换个网络（如手机热点）生成 Token 即可；上传/拉取走的 `api.github.com` 一般不受影响
 
 ## 已知限制
@@ -70,3 +82,4 @@ git add index.html README.md && git commit -m "更新说明" && git push
 
 - 2026-09-17 初版上线：曾用本地 HTTP 服务（局域网）+ cloudflared 临时隧道（公网）过渡，迁移到 GitHub Pages 后均已关停
 - 2026-09-17 增加本地路书库（文件夹分组，存 localStorage）和 GitHub 同步（上传/拉取整库覆盖），支持多台电脑接力规划
+- 2026-09-17 GitHub 同步改为目录结构存储：文件夹 = 目录、路书 = 独立 .json 文件，Git Data API 整库单 commit，可直接在 GitHub 上按目录查看
