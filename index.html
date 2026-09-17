@@ -481,19 +481,7 @@
   }
   function el(id) { return document.getElementById(id); }
 
-  // ---------- 距离（直线，Haversine） ----------
-  function distMeters(a, b) {
-    var R = 6371000, rad = Math.PI / 180;
-    var dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
-    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    return 2 * R * Math.asin(Math.sqrt(h));
-  }
-  function pathMeters(list) {
-    var t = 0;
-    for (var i = 1; i < list.length; i++) t += distMeters(list[i - 1], list[i]);
-    return t;
-  }
+  // ---------- 里程显示 ----------
   function fmtKm(m) {
     return m < 1000 ? Math.round(m) + ' 米' : (m / 1000).toFixed(1) + ' 公里';
   }
@@ -510,8 +498,9 @@
     el('viewer').style.display = 'block';
     el('vName').textContent = data.name || '路书';
     el('vMeta').textContent = '共 ' + data.stops.length + ' 个途经点' +
-      (data.routeDist ? ' · 驾车全程约 ' + fmtKm(data.routeDist)
-        : data.stops.length >= 2 ? ' · 直线全程约 ' + fmtKm(pathMeters(data.stops)) : '') +
+      (data.stops.length >= 2
+        ? ' · 驾车全程 ' + (data.routeDist ? '约 ' + fmtKm(data.routeDist) : '-')
+        : '') +
       ' · 逐段点击导航';
     document.title = (data.name || '路书') + ' · 高德导航';
 
@@ -521,7 +510,7 @@
       var navUrl = 'https://uri.amap.com/navigation?to=' + s.lng + ',' + s.lat + ',' +
         encodeURIComponent(s.name) + '&mode=car&callnative=1&src=roadbook';
       var coord = s.lng.toFixed(5) + ', ' + s.lat.toFixed(5);
-      var seg = i > 0 ? '距上一点 ' + fmtKm(distMeters(data.stops[i - 1], s)) + '（直线）· ' : '';
+      var seg = i > 0 ? '距上一点 ' + (s.segDist ? fmtKm(s.segDist) : '-') + ' · ' : '';
       var div = document.createElement('div');
       div.className = 'leg';
       div.innerHTML =
@@ -803,7 +792,6 @@
   // 单段规划：两点式调用（官方标准形式），失败自动重试 1 次，并把原因打到控制台
   function searchSeg(q, done) {
     var tried = 0;
-    var straight = distMeters({ lng: q.a[0], lat: q.a[1] }, { lng: q.b[0], lat: q.b[1] });
     (function attempt() {
       try {
         driving.search(
@@ -818,13 +806,13 @@
               console.warn('[路书] 路段规划失败', q.key, 'status=' + status,
                 result && result.info ? 'info=' + result.info : '', result);
               if (++tried < 2) { setTimeout(attempt, 400); return; }
-              done([q.a, q.b], true, straight); // 直线虚线兜底
+              done([q.a, q.b], true, null); // 直线虚线兜底，无里程
             }
           }
         );
       } catch (e) {
         console.warn('[路书] 路段规划异常', q.key, e);
-        done([q.a, q.b], true, straight);
+        done([q.a, q.b], true, null);
       }
     })();
   }
@@ -839,45 +827,52 @@
     }
   }
 
-  // 第 i 段（stops[i] → stops[i+1]）的里程：优先用已缓存的驾车里程，未规划/失败段直线兜底
-  function segDistInfo(i) {
-    if (!el('noRoute').checked) {
-      var c = segCache[segKey(stops[i], stops[i + 1])];
-      if (c && !c.dashed && c.dist) return { m: c.dist, driving: true };
-    }
-    return { m: distMeters(stops[i], stops[i + 1]), driving: false };
+  // 第 i 段（stops[i] → stops[i+1]）的驾车里程（米）：只认已成功规划的缓存，否则 null
+  function segDistMeters(i) {
+    if (el('noRoute').checked) return null;
+    var c = segCache[segKey(stops[i], stops[i + 1])];
+    return (c && !c.dashed && c.dist) ? c.dist : null;
   }
 
-  // 只更新里程文字，不重建列表（避免打断正在改名的输入框）
+  // 只更新里程文字，不重建列表（避免打断正在改名的输入框）；没有驾车里程的段显示 -
   function updateDistLabels() {
     var rows = el('stopList').querySelectorAll('.stop');
-    var total = 0, anyStraight = false;
+    var total = 0, allOk = stops.length >= 2;
     for (var i = 0; i < stops.length - 1; i++) {
-      var d = segDistInfo(i);
-      total += d.m;
-      if (!d.driving) anyStraight = true;
+      var m = segDistMeters(i);
       var label = rows[i + 1] && rows[i + 1].querySelector('.dist');
-      if (label) label.textContent = '距上一点 ' + fmtKm(d.m) + (d.driving ? '' : '（直线）');
+      if (label) label.textContent = '距上一点 ' + (m ? fmtKm(m) : '-');
+      if (m) total += m; else allOk = false;
     }
     var di = el('distInfo');
     if (stops.length < 2) { di.style.display = 'none'; return; }
-    var noRoute = el('noRoute').checked;
     di.style.display = 'block';
-    di.textContent = '共 ' + stops.length + ' 个地点 · ' +
-      (noRoute ? '直线全程约 ' : anyStraight ? '全程约 ' : '驾车全程约 ') +
-      fmtKm(total) + (!noRoute && anyStraight ? '（含直线段）' : '');
+    di.textContent = '共 ' + stops.length + ' 个地点 · 驾车全程 ' +
+      (allOk ? '约 ' + fmtKm(total) : '-');
   }
 
   // 当前编辑内容若各段驾车路线都已规划完成，返回驾车总里程（米），否则 null
   function currentRouteDist() {
-    if (stops.length < 2 || el('noRoute').checked) return null;
+    if (stops.length < 2) return null;
     var sum = 0;
     for (var i = 0; i < stops.length - 1; i++) {
-      var c = segCache[segKey(stops[i], stops[i + 1])];
-      if (!c || c.dashed || !c.dist) return null;
-      sum += c.dist;
+      var m = segDistMeters(i);
+      if (!m) return null;
+      sum += m;
     }
     return Math.round(sum);
+  }
+
+  // 导出当前地点快照：把每段的驾车里程记在后一个点的 segDist 上（没有就不带）
+  function currentStopsSnapshot() {
+    return stops.map(function (s, i) {
+      var o = { name: s.name, lng: s.lng, lat: s.lat };
+      if (i > 0) {
+        var m = segDistMeters(i);
+        if (m) o.segDist = Math.round(m);
+      }
+      return o;
+    });
   }
 
   function doRefreshRoute() {
@@ -1053,7 +1048,11 @@
         '然后用 http://电脑IP:8080/index.html 打开本页面再生成链接。');
       return;
     }
-    var data = { name: el('bookName').value.trim() || '我的路书', stops: stops, routeDist: currentRouteDist() };
+    var data = {
+      name: el('bookName').value.trim() || '我的路书',
+      stops: currentStopsSnapshot(),
+      routeDist: currentRouteDist()
+    };
     var url = location.origin + location.pathname + '#' + encodeData(data);
     el('shareBox').style.display = 'block';
     el('shareUrl').value = url;
@@ -1163,7 +1162,7 @@
       f.books.slice().reverse().forEach(function (b) { // 新的在前
         var meta = b.stops.length + ' 个地点';
         if (b.routeDist) meta += ' · 驾车约 ' + fmtKm(b.routeDist);
-        else if (b.stops.length >= 2) meta += ' · 直线约 ' + fmtKm(pathMeters(b.stops));
+        else if (b.stops.length >= 2) meta += ' · 里程 -';
         meta += ' · ' + fmtTime(b.updatedAt);
         var bTrackOn = trackState && trackState.type === 'book' && trackState.bookId === b.id;
         var row = document.createElement('div');
@@ -1272,7 +1271,7 @@
       if (!folder) { alert('文件夹已不存在，请重试'); closeModal('saveModal'); return; }
     }
     var name = el('saveBookName').value.trim() || '我的路书';
-    var snapshot = stops.map(function (s) { return { name: s.name, lng: s.lng, lat: s.lat }; });
+    var snapshot = currentStopsSnapshot(); // 各点带上已规划成功的分段驾车里程
     var routeDist = currentRouteDist(); // 各段都规划完成时是驾车总里程，否则 null
     var existing = folder.books.filter(function (b) { return b.name === name; })[0];
     if (existing) {
@@ -1456,7 +1455,9 @@
           if (d && Array.isArray(d.stops)) {
             d.stops.forEach(function (s) {
               if (s && typeof s.lng === 'number' && typeof s.lat === 'number') {
-                stops.push({ name: String(s.name || '途经点'), lng: s.lng, lat: s.lat });
+                var o = { name: String(s.name || '途经点'), lng: s.lng, lat: s.lat };
+                if (typeof s.segDist === 'number') o.segDist = s.segDist;
+                stops.push(o);
               }
             });
           }
