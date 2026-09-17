@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>路书 · 高德导航分享</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  body { display: flex; flex-direction: column; background: #f5f6f8; overflow: hidden; }
+
+  #main { flex: 1; display: flex; min-height: 0; position: relative; }
+
+  /* ---- 左侧编辑面板 ---- */
+  #panel {
+    width: 300px; flex: none; display: flex; flex-direction: column;
+    background: #fff; border-right: 1px solid #e5e7eb; z-index: 20;
+    box-shadow: 2px 0 8px rgba(0,0,0,.04);
+  }
+  .p-head {
+    height: 48px; flex: none; display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; border-bottom: 1px solid #f0f1f3;
+  }
+  .p-head .back {
+    border: none; background: none; font-size: 20px; color: #344054;
+    cursor: pointer; padding: 0 4px; line-height: 1;
+  }
+  .p-head .title { font-size: 15px; font-weight: 600; color: #101828; }
+  #panelBody { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #panel.collapsed #panelBody { display: none; }
+
+  .p-row { padding: 12px 14px 0; }
+  .p-row label { display: block; font-size: 13px; color: #344054; margin-bottom: 6px; }
+  #bookName {
+    width: 100%; height: 34px; padding: 0 10px; font-size: 14px;
+    border: 1px solid #d0d5dd; border-radius: 6px; outline: none;
+  }
+  #bookName:focus { border-color: #1e6fff; }
+  .p-note { padding: 8px 14px 0; font-size: 12px; color: #98a2b3; }
+
+  #addHint {
+    margin: 12px 14px 0; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; user-select: none;
+  }
+  #addHint .plus {
+    width: 26px; height: 26px; flex: none; border-radius: 50%;
+    background: #1e6fff; color: #fff; font-size: 18px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #addHint .txt { font-size: 13px; color: #1e6fff; }
+
+  #stopList { flex: 1; overflow-y: auto; padding: 12px 14px; min-height: 60px; }
+  #stopList:empty::after {
+    content: '还没有地点，点上方 + 或直接在地图上点击添加';
+    font-size: 12px; color: #c0c6d0;
+  }
+  .stop {
+    display: flex; align-items: center; gap: 8px; padding: 8px;
+    border: 1px solid #eceef1; border-radius: 8px; margin-bottom: 8px; background: #fafbfc;
+  }
+  .stop .idx {
+    width: 22px; height: 22px; flex: none; border-radius: 50%;
+    background: #1e6fff; color: #fff; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stop .name {
+    flex: 1; border: none; background: transparent; font-size: 14px; outline: none; min-width: 0;
+  }
+  .stop button {
+    border: none; background: none; cursor: pointer; font-size: 13px;
+    color: #98a2b3; padding: 2px 4px;
+  }
+  .stop button:hover { color: #1e6fff; }
+  .stop button.del:hover { color: #e04f5e; }
+
+  .noroute {
+    display: flex; align-items: center; gap: 6px; padding: 0 14px 10px;
+    font-size: 12px; color: #667085; cursor: pointer; user-select: none;
+  }
+  #routeMsg {
+    display: none; margin: 0 14px 10px; padding: 8px 10px; font-size: 12px;
+    color: #ad6800; background: #fff7e6; border: 1px solid #ffd591;
+    border-radius: 6px; line-height: 1.6; cursor: pointer;
+  }
+
+  #actions { display: flex; gap: 10px; padding: 0 14px 12px; }
+  .btn {
+    height: 38px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;
+    background: #1e6fff; color: #fff; flex: 1;
+  }
+  .btn.secondary { background: #f2f4f7; color: #344054; }
+  .btn:active { opacity: .85; }
+
+  #shareBox {
+    display: none; padding: 12px 14px; border-top: 1px solid #eee; background: #f9fafb;
+  }
+  #shareBox textarea {
+    width: 100%; height: 70px; font-size: 12px; padding: 8px; resize: none;
+    border: 1px solid #d0d5dd; border-radius: 8px; word-break: break-all;
+  }
+  #shareBox img { display: block; margin: 10px auto 0; width: 160px; height: 160px; background: #fff; }
+  #shareBox .tip { font-size: 12px; color: #98a2b3; margin-top: 6px; text-align: center; }
+  #copyBtn { margin-top: 8px; width: 100%; }
+
+  /* ---- 地图区 + 顶部悬浮工具条 ---- */
+  #mapWrap { flex: 1; min-width: 0; position: relative; }
+  #map { position: absolute; inset: 0; }
+
+  #toolbar {
+    position: absolute; top: 14px; left: 14px; right: 70px; z-index: 10;
+    display: flex; gap: 10px; align-items: flex-start; pointer-events: none;
+  }
+  #searchBar {
+    width: 340px; max-width: 45%; pointer-events: auto; position: relative;
+  }
+  #searchInput {
+    width: 100%; height: 40px; padding: 0 14px 0 36px; font-size: 14px;
+    border: none; border-radius: 8px; outline: none; background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2398a2b3' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: 12px center;
+  }
+  #searchResults {
+    display: none; margin-top: 6px; max-height: 320px; overflow-y: auto;
+    background: #fff; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.14);
+  }
+  #searchResults.has { display: block; }
+  .sug {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+    border-bottom: 1px solid #f2f4f7; cursor: pointer;
+  }
+  .sug:last-child { border-bottom: none; }
+  .sug:hover { background: #f5f8ff; }
+  .sug .s-info { flex: 1; min-width: 0; }
+  .sug .s-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sug .s-addr {
+    font-size: 12px; color: #98a2b3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sug .add {
+    width: 28px; height: 28px; flex: none; border-radius: 50%; font-size: 18px; line-height: 1;
+    border: 1px solid #1e6fff; background: #fff; color: #1e6fff; cursor: pointer;
+  }
+  .sug .add:hover { background: #1e6fff; color: #fff; }
+  .sug .add.done { border-color: #12b76a; color: #12b76a; background: #fff; pointer-events: none; }
+
+  .tools { display: flex; gap: 8px; pointer-events: auto; }
+  .tools button {
+    height: 40px; padding: 0 14px; border: none; border-radius: 8px; cursor: pointer;
+    background: #fff; color: #344054; font-size: 13px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  }
+  .tools button:hover { color: #1e6fff; }
+  .tools button.on { background: #1e6fff; color: #fff; }
+
+  /* ---- 地图上的候选点气泡 ---- */
+  .map-bubble {
+    display: flex; align-items: center; gap: 8px; background: #fff; position: relative;
+    border-radius: 20px; padding: 8px 8px 8px 14px; max-width: 260px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.18); white-space: nowrap;
+  }
+  .map-bubble .b-name {
+    font-size: 14px; color: #101828; overflow: hidden; text-overflow: ellipsis;
+  }
+  .map-bubble .b-add {
+    width: 28px; height: 28px; flex: none; border: none; border-radius: 50%;
+    background: #1e6fff; color: #fff; font-size: 18px; line-height: 1; cursor: pointer;
+  }
+  .map-bubble .b-add:active { opacity: .85; }
+  .map-bubble::after {
+    content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px;
+    border: 6px solid transparent; border-top-color: #fff; border-bottom: none;
+  }
+
+  /* ---- 手机/查看模式 ---- */
+  #viewer { display: none; flex: 1; overflow-y: auto; padding: 16px; }
+  #viewer h2 { font-size: 18px; margin-bottom: 4px; }
+  #viewer .meta { font-size: 13px; color: #98a2b3; margin-bottom: 16px; }
+  .leg {
+    display: flex; align-items: center; gap: 12px; background: #fff;
+    border-radius: 12px; padding: 14px; margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .leg .idx {
+    width: 26px; height: 26px; flex: none; border-radius: 50%;
+    background: #1e6fff; color: #fff; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .leg .info { flex: 1; min-width: 0; }
+  .leg .info .t { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .leg .info .c { font-size: 12px; color: #98a2b3; }
+  .leg a.nav {
+    flex: none; text-decoration: none; background: #1e6fff; color: #fff;
+    font-size: 14px; padding: 9px 14px; border-radius: 8px;
+  }
+  #wechatTip {
+    display: none; background: #fff7e6; border: 1px solid #ffd591; color: #ad6800;
+    font-size: 13px; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; line-height: 1.6;
+  }
+  #editThis {
+    display: block; text-align: center; margin: 18px 0 30px; font-size: 13px; color: #1e6fff;
+    text-decoration: none;
+  }
+
+  /* ---- Key 设置弹层 ---- */
+  #keyModal {
+    position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.45);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  #keyModal .card {
+    background: #fff; border-radius: 12px; padding: 20px; width: 420px; max-width: 100%;
+  }
+  #keyModal h3 { font-size: 15px; margin-bottom: 10px; }
+  #keyModal p { font-size: 12px; color: #667085; line-height: 1.7; margin-bottom: 10px; }
+  #keyModal input {
+    width: 100%; height: 36px; padding: 0 10px; font-size: 13px; margin-bottom: 8px;
+    border: 1px solid #d0d5dd; border-radius: 8px; outline: none;
+  }
+  #keyModal a { color: #1e6fff; }
+  #keyModal .btn { width: 100%; }
+
+  @media (max-width: 720px) {
+    #panel { width: 100%; }
+    #mapWrap { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="main">
+
+  <!-- 编辑面板 -->
+  <div id="panel">
+    <div class="p-head">
+      <button class="back" id="collapseBtn" title="收起/展开">‹</button>
+      <span class="title">编辑路线信息</span>
+    </div>
+    <div id="panelBody">
+      <div class="p-row">
+        <label>名称</label>
+        <input id="bookName" placeholder="必填，最多支持40字" maxlength="40" value="我的路书">
+      </div>
+      <div class="p-note">请文明用语，勿包含违法违规内容</div>
+      <div id="addHint">
+        <span class="plus">+</span>
+        <span class="txt">搜索或点击地图增加地点，最多支持50个点</span>
+      </div>
+      <div id="stopList"></div>
+      <div id="routeMsg"></div>
+      <label class="noroute"><input type="checkbox" id="noRoute"> 地点之间不规划路线</label>
+      <div id="actions">
+        <button class="btn secondary" id="clearBtn">取消</button>
+        <button class="btn" id="genBtn">保存</button>
+      </div>
+      <div id="shareBox">
+        <textarea id="shareUrl" readonly></textarea>
+        <button class="btn secondary" id="copyBtn">复制链接（发到微信即可）</button>
+        <img id="qrImg" alt="二维码">
+        <div class="tip">手机扫码或微信里点链接打开</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 地图区 -->
+  <div id="mapWrap">
+    <div id="toolbar">
+      <div id="searchBar">
+        <input id="searchInput" placeholder="搜索想标记的地点">
+        <div id="searchResults"></div>
+      </div>
+      <div class="tools">
+        <button id="fitBtn" title="显示全部地点">全览</button>
+        <button id="satBtn" title="切换卫星图">卫星</button>
+        <button id="clearAllBtn" title="清空全部地点">清空</button>
+      </div>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <!-- 查看模式（手机打开分享链接时） -->
+  <div id="viewer">
+    <div id="wechatTip">检测到你在微信中打开。点下方导航按钮后，如未自动跳转高德，请点右上角「···」选择「在浏览器打开」，再点导航按钮。</div>
+    <h2 id="vName"></h2>
+    <div class="meta" id="vMeta"></div>
+    <div id="vLegs"></div>
+    <a id="editThis" href="#">在电脑上编辑这份路书</a>
+  </div>
+
+</div>
+
+<!-- Key 设置 -->
+<div id="keyModal">
+  <div class="card">
+    <h3>配置高德 API Key（只需一次）</h3>
+    <p>到 <a href="https://lbs.amap.com" target="_blank">lbs.amap.com</a> 免费注册开发者 →
+       创建应用 → 添加「Web端(JS API)」类型的 Key，把 Key 和安全密钥填在下面。
+       信息只存在你浏览器的 localStorage 里。</p>
+    <input id="keyInput" placeholder="JS API Key">
+    <input id="secretInput" placeholder="安全密钥 securityJsCode">
+    <button class="btn" id="saveKeyBtn">保存并加载地图</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var MAX_STOPS = 50;
+
+  // ---------- 数据 ----------
+  var stops = [];   // {name, lng, lat}
+  var bookData = null; // 从分享链接解析出的数据
+
+  // ---------- 工具 ----------
+  function encodeData(obj) {
+    var bytes = new TextEncoder().encode(JSON.stringify(obj));
+    var bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  function decodeData(s) {
+    var bin = atob(s);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+  function el(id) { return document.getElementById(id); }
+
+  if (/MicroMessenger/i.test(navigator.userAgent)) {
+    el('wechatTip').style.display = 'block';
+  }
+
+  // ---------- 查看模式 ----------
+  function showViewer(data) {
+    bookData = data;
+    el('panel').style.display = 'none';
+    el('mapWrap').style.display = 'none';
+    el('viewer').style.display = 'block';
+    el('vName').textContent = data.name || '路书';
+    el('vMeta').textContent = '共 ' + data.stops.length + ' 个途经点 · 逐段点击导航';
+    document.title = (data.name || '路书') + ' · 高德导航';
+
+    var box = el('vLegs');
+    box.innerHTML = '';
+    data.stops.forEach(function (s, i) {
+      var navUrl = 'https://uri.amap.com/navigation?to=' + s.lng + ',' + s.lat + ',' +
+        encodeURIComponent(s.name) + '&mode=car&callnative=1&src=roadbook';
+      var div = document.createElement('div');
+      div.className = 'leg';
+      div.innerHTML =
+        '<div class="idx">' + (i + 1) + '</div>' +
+        '<div class="info"><div class="t">' + escapeHtml(s.name) + '</div>' +
+        '<div class="c">' + s.lng.toFixed(5) + ', ' + s.lat.toFixed(5) + '</div></div>' +
+        '<a class="nav" href="' + navUrl + '">导航</a>';
+      box.appendChild(div);
+    });
+
+    el('editThis').onclick = function (e) {
+      e.preventDefault();
+      stops = data.stops.map(function (s) { return { name: s.name, lng: s.lng, lat: s.lat }; });
+      el('bookName').value = data.name || '我的路书';
+      history.replaceState(null, '', location.pathname);
+      enterEditMode();
+      if (window.__map) { renderStops(); refreshRoute(); fitMap(); }
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function enterEditMode() {
+    el('viewer').style.display = 'none';
+    el('panel').style.display = '';
+    el('mapWrap').style.display = '';
+  }
+
+  // ---------- 编辑模式 ----------
+  var map = null, markers = [], driving = null, geocoder = null, placeSearch = null;
+  var infoWindow = null, candidateMarker = null, satLayer = null;
+
+  // 在地图上显示候选点气泡（名称 + 加号），点 + 才加入路书
+  function showCandidate(name, lng, lat) {
+    if (candidateMarker) candidateMarker.setMap(null);
+    candidateMarker = new AMap.Marker({
+      position: [lng, lat], map: map,
+      icon: new AMap.Icon({
+        size: new AMap.Size(19, 31), imageSize: new AMap.Size(19, 31),
+        image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png'
+      })
+    });
+    var div = document.createElement('div');
+    div.className = 'map-bubble';
+    div.innerHTML =
+      '<span class="b-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>' +
+      '<button class="b-add" title="加入路书">+</button>';
+    div.querySelector('.b-add').onclick = function () {
+      addStop(name, lng, lat);
+      infoWindow.close();
+      if (candidateMarker) { candidateMarker.setMap(null); candidateMarker = null; }
+    };
+    infoWindow.setContent(div);
+    infoWindow.open(map, [lng, lat]);
+  }
+
+  function initMap() {
+    map = new AMap.Map('map', { zoom: 5, center: [108.9, 34.2], resizeEnable: true });
+    window.__map = map;
+    map.addControl(new AMap.ToolBar({ position: 'RB' }));
+    map.addControl(new AMap.Scale());
+    driving = new AMap.Driving({ map: map, hideMarkers: true });
+    geocoder = new AMap.Geocoder();
+    placeSearch = new AMap.PlaceSearch({ city: '全国', citylimit: false, pageSize: 10 });
+    infoWindow = new AMap.InfoWindow({
+      isCustom: true, offset: new AMap.Pixel(0, -34), autoMove: true
+    });
+    infoWindow.on('close', function () {
+      if (candidateMarker) { candidateMarker.setMap(null); candidateMarker = null; }
+    });
+
+    function doSearch() {
+      var kw = el('searchInput').value.trim();
+      if (!kw) return;
+      placeSearch.search(kw, function (status, result) {
+        var box = el('searchResults');
+        box.innerHTML = '';
+        box.classList.add('has');
+        if (status !== 'complete' || !result.poiList || !result.poiList.pois.length) {
+          box.innerHTML = '<div class="sug"><div class="s-info"><div class="s-addr">没有找到相关地点，换个关键词试试</div></div></div>';
+          return;
+        }
+        result.poiList.pois.forEach(function (poi) {
+          if (!poi.location) return;
+          var row = document.createElement('div');
+          row.className = 'sug';
+          row.innerHTML =
+            '<div class="s-info"><div class="s-name">' + escapeHtml(poi.name) + '</div>' +
+            '<div class="s-addr">' + escapeHtml(poi.address || '') + '</div></div>' +
+            '<button class="add" title="加入路书">+</button>';
+          // 点行：地图定位并弹出带 + 的气泡
+          row.querySelector('.s-info').onclick = function () {
+            map.setZoomAndCenter(14, [poi.location.lng, poi.location.lat]);
+            showCandidate(poi.name, poi.location.lng, poi.location.lat);
+          };
+          // 列表上的 + 同样可加入
+          row.querySelector('.add').onclick = function (e) {
+            e.stopPropagation();
+            if (this.classList.contains('done')) return;
+            addStop(poi.name, poi.location.lng, poi.location.lat);
+            this.classList.add('done');
+            this.textContent = '✓';
+          };
+          box.appendChild(row);
+        });
+      });
+    }
+    el('searchInput').onkeydown = function (e) { if (e.key === 'Enter') doSearch(); };
+    el('searchInput').oninput = function () {
+      if (!this.value.trim()) {
+        el('searchResults').classList.remove('has');
+        el('searchResults').innerHTML = '';
+      }
+    };
+
+    // 点地图：反查地名后弹出候选气泡，点 + 才加入
+    map.on('click', function (e) {
+      el('searchResults').classList.remove('has');
+      var lng = e.lnglat.lng, lat = e.lnglat.lat;
+      geocoder.getAddress([lng, lat], function (status, result) {
+        var name = (status === 'complete' && result.regeocode)
+          ? result.regeocode.formattedAddress : '途经点';
+        if (name.length > 30) name = name.slice(0, 30);
+        showCandidate(name, lng, lat);
+      });
+    });
+
+    // 工具条
+    el('fitBtn').onclick = fitMap;
+    el('satBtn').onclick = function () {
+      if (satLayer) {
+        satLayer.setMap(null); satLayer = null;
+        this.classList.remove('on');
+      } else {
+        satLayer = new AMap.TileLayer.Satellite();
+        satLayer.setMap(map);
+        this.classList.add('on');
+      }
+    };
+    el('clearAllBtn').onclick = clearAll;
+
+    if (stops.length) { renderStops(); refreshRoute(); fitMap(); }
+  }
+
+  function addStop(name, lng, lat) {
+    if (stops.length >= MAX_STOPS) { alert('最多支持 ' + MAX_STOPS + ' 个点'); return; }
+    stops.push({ name: name, lng: +lng.toFixed(6), lat: +lat.toFixed(6) });
+    renderStops();
+    refreshRoute();
+  }
+
+  function clearAll() {
+    if (!stops.length || confirm('清空全部地点？')) {
+      stops = []; renderStops(); refreshRoute();
+      el('shareBox').style.display = 'none';
+      if (infoWindow) infoWindow.close();
+    }
+  }
+
+  function renderStops() {
+    // 列表
+    var list = el('stopList');
+    list.innerHTML = '';
+    stops.forEach(function (s, i) {
+      var row = document.createElement('div');
+      row.className = 'stop';
+      row.innerHTML =
+        '<span class="idx">' + (i + 1) + '</span>' +
+        '<input class="name" value="' + escapeHtml(s.name) + '">' +
+        '<button data-a="up" title="上移">↑</button>' +
+        '<button data-a="down" title="下移">↓</button>' +
+        '<button class="del" data-a="del" title="删除">✕</button>';
+      row.querySelector('.name').onchange = function () { s.name = this.value || s.name; };
+      row.onclick = function (e) {
+        var a = e.target.getAttribute && e.target.getAttribute('data-a');
+        if (!a) return;
+        if (a === 'del') stops.splice(i, 1);
+        if (a === 'up' && i > 0) { stops.splice(i - 1, 0, stops.splice(i, 1)[0]); }
+        if (a === 'down' && i < stops.length - 1) { stops.splice(i + 1, 0, stops.splice(i, 1)[0]); }
+        renderStops(); refreshRoute();
+      };
+      list.appendChild(row);
+    });
+
+    // 地图标记
+    if (!map) return;
+    markers.forEach(function (m) { m.setMap(null); });
+    markers = stops.map(function (s, i) {
+      var m = new AMap.Marker({
+        position: [s.lng, s.lat], map: map, draggable: true,
+        label: { content: String(i + 1), direction: 'top' }
+      });
+      m.on('dragend', function () {
+        var p = m.getPosition();
+        s.lng = +p.lng.toFixed(6); s.lat = +p.lat.toFixed(6);
+        refreshRoute();
+      });
+      return m;
+    });
+  }
+
+  // ---------- 分段路线规划（缓存 + 防抖 + 限并发，防卡顿） ----------
+  var segCache = {};    // 'lng,lat>lng,lat' -> path 数组（含失败时的直线兜底）
+  var segLines = [];    // 当前画在地图上的分段折线
+  var routeTimer = null;
+  var routeReqId = 0;   // 过期请求令牌：新一轮刷新后旧回调直接丢弃
+
+  function segKey(a, b) { return a.lng + ',' + a.lat + '>' + b.lng + ',' + b.lat; }
+
+  function clearSegLines() {
+    segLines.forEach(function (l) { l.setMap(null); });
+    segLines = [];
+  }
+
+  function drawSeg(path, dashed) {
+    var line = new AMap.Polyline({
+      path: path, map: map, strokeColor: '#1e6fff',
+      strokeWeight: dashed ? 4 : 5, strokeOpacity: 0.8,
+      strokeStyle: dashed ? 'dashed' : 'solid'
+    });
+    segLines.push(line);
+  }
+
+  function refreshRoute() {
+    if (!map) return;
+    clearTimeout(routeTimer);
+    routeTimer = setTimeout(doRefreshRoute, 250); // 防抖：连续操作只算最后一次
+  }
+
+  // 单段规划：两点式调用（官方标准形式），失败自动重试 1 次，并把原因打到控制台
+  function searchSeg(q, done) {
+    var tried = 0;
+    (function attempt() {
+      try {
+        driving.search(
+          new AMap.LngLat(q.a[0], q.a[1]),
+          new AMap.LngLat(q.b[0], q.b[1]),
+          function (status, result) {
+            if (status === 'complete' && result.routes && result.routes.length) {
+              var path = [];
+              result.routes[0].steps.forEach(function (step) { path = path.concat(step.path); });
+              done(path, false);
+            } else {
+              console.warn('[路书] 路段规划失败', q.key, 'status=' + status,
+                result && result.info ? 'info=' + result.info : '', result);
+              if (++tried < 2) { setTimeout(attempt, 400); return; }
+              done([q.a, q.b], true); // 直线虚线兜底
+            }
+          }
+        );
+      } catch (e) {
+        console.warn('[路书] 路段规划异常', q.key, e);
+        done([q.a, q.b], true);
+      }
+    })();
+  }
+
+  function updateRouteMsg(pending, failed) {
+    var msg = el('routeMsg');
+    if (pending === 0 && failed > 0) {
+      msg.style.display = 'block';
+      msg.textContent = '有 ' + failed + ' 段未能规划出驾车路线，已用虚线代替。点此重试（F12 控制台搜"路书"可看失败原因）';
+    } else if (pending === 0) {
+      msg.style.display = 'none';
+    }
+  }
+
+  function doRefreshRoute() {
+    routeReqId++;
+    var id = routeReqId;
+    clearSegLines();
+    el('routeMsg').style.display = 'none';
+    if (el('noRoute').checked || stops.length < 2) return;
+
+    // 缓存兜底：拖动标记会产生大量新 key，防止缓存无限膨胀
+    if (Object.keys(segCache).length > 300) segCache = {};
+
+    // 先画已缓存的段，未缓存的进队列
+    var queue = [];
+    for (var i = 0; i < stops.length - 1; i++) {
+      var a = stops[i], b = stops[i + 1];
+      var key = segKey(a, b);
+      if (segCache[key]) {
+        drawSeg(segCache[key].path, segCache[key].dashed);
+      } else {
+        queue.push({ key: key, a: [a.lng, a.lat], b: [b.lng, b.lat] });
+      }
+    }
+
+    var pending = queue.length, failed = 0;
+
+    // 限并发 3：逐段请求，结果回来一段画一段，不阻塞界面
+    var workers = Math.min(3, queue.length);
+    for (var w = 0; w < workers; w++) {
+      (function next() {
+        if (id !== routeReqId) return; // 已有新一轮刷新，丢弃
+        var q = queue.shift();
+        if (!q) return;
+        searchSeg(q, function (path, dashed) {
+          segCache[q.key] = { path: path, dashed: dashed };
+          pending--;
+          if (dashed) failed++;
+          if (id === routeReqId) {
+            drawSeg(path, dashed);
+            updateRouteMsg(pending, failed);
+          }
+          next();
+        });
+      })();
+    }
+  }
+
+  function fitMap() {
+    if (map && stops.length) map.setFitView(null, false, [80, 80, 80, 80]);
+  }
+
+  // ---------- 面板交互 ----------
+  el('collapseBtn').onclick = function () {
+    var p = el('panel');
+    p.classList.toggle('collapsed');
+    this.textContent = p.classList.contains('collapsed') ? '›' : '‹';
+  };
+
+  el('addHint').onclick = function () {
+    var input = el('searchInput');
+    if (input) input.focus();
+  };
+
+  el('noRoute').onchange = refreshRoute;
+
+  // 点提示：清掉失败段的缓存并重试
+  el('routeMsg').onclick = function () {
+    Object.keys(segCache).forEach(function (k) {
+      if (segCache[k].dashed) delete segCache[k];
+    });
+    refreshRoute();
+  };
+
+  el('clearBtn').onclick = clearAll;
+
+  // ---------- 分享 ----------
+  el('genBtn').onclick = function () {
+    if (!stops.length) { alert('先添加至少一个地点'); return; }
+    if (location.protocol === 'file:') {
+      alert('你现在是直接双击打开的本地文件（file://），生成的链接手机访问不到。\n\n' +
+        '请在 roadbook 目录运行：\n  python3 -m http.server 8080\n' +
+        '然后用 http://电脑IP:8080/index.html 打开本页面再生成链接。');
+      return;
+    }
+    var data = { name: el('bookName').value.trim() || '我的路书', stops: stops };
+    var url = location.origin + location.pathname + '#' + encodeData(data);
+    el('shareBox').style.display = 'block';
+    el('shareUrl').value = url;
+    el('qrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' +
+      encodeURIComponent(url);
+  };
+
+  el('copyBtn').onclick = function () {
+    var ta = el('shareUrl');
+    ta.select();
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(ta.value).then(function () {
+        el('copyBtn').textContent = '已复制 ✓';
+        setTimeout(function () { el('copyBtn').textContent = '复制链接（发到微信即可）'; }, 1500);
+      });
+    } else { document.execCommand('copy'); }
+  };
+
+  // ---------- 启动 ----------
+  var mapLoading = false;
+
+  function loadMapScript() {
+    var key = localStorage.getItem('amap_key');
+    var secret = localStorage.getItem('amap_secret');
+    if (!key) { el('keyModal').style.display = 'flex'; return; }
+    if (window.__map || mapLoading) return;
+    mapLoading = true;
+    window._AMapSecurityConfig = { securityJsCode: secret || '' };
+    var s = document.createElement('script');
+    s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + key +
+      '&plugin=AMap.PlaceSearch,AMap.Driving,AMap.Geocoder,AMap.ToolBar,AMap.Scale';
+    s.onload = function () { mapLoading = false; initMap(); };
+    s.onerror = function () {
+      mapLoading = false;
+      alert('地图加载失败，请检查 Key 和安全密钥');
+      el('keyModal').style.display = 'flex';
+    };
+    document.head.appendChild(s);
+  }
+
+  var hash = location.hash.slice(1);
+  if (hash) {
+    try {
+      var data = decodeData(decodeURIComponent(hash));
+      if (data && data.stops && data.stops.length) {
+        showViewer(data);
+        // 查看模式下不加载地图（省流量），点"编辑此路书"时才加载
+        el('editThis').addEventListener('click', function () { setTimeout(loadMapScript, 0); });
+        return;
+      }
+    } catch (e) { /* hash 非法则进入编辑模式 */ }
+  }
+
+  loadMapScript();
+
+  el('saveKeyBtn').onclick = function () {
+    var k = el('keyInput').value.trim(), sec = el('secretInput').value.trim();
+    if (!k) { alert('请填写 Key'); return; }
+    localStorage.setItem('amap_key', k);
+    localStorage.setItem('amap_secret', sec);
+    location.reload();
+  };
+})();
+</script>
+</body>
+</html>
